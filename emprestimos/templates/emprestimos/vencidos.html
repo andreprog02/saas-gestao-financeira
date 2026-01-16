@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load humanize l10n %}
+{% block content %}
+<h3>Parcelas vencidas</h3>
+
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Contrato</th>
+        <th>Cliente</th>
+        <th>#</th>
+        <th>Vencimento</th>
+        <th class="text-end">Valor</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in parcelas %}
+        <tr>
+          <td>{{ p.emprestimo.codigo_contrato }}</td>
+          <td>{{ p.emprestimo.cliente.nome_completo }}</td>
+          <td>{{ p.numero }}</td>
+          <td>{{ p.vencimento|date:"d/m/Y" }}</td>
+          <td class="text-end">R$ {{ p.valor|floatformat:2|localize }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'emprestimos:contrato_detalhe' p.emprestimo.id %}">Abrir</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="text-center text-muted">Nada vencido.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

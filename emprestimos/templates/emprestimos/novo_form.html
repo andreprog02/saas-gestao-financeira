@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% load humanize l10n %}
+{% block content %}
+
+<h3>Empréstimo para {{ cliente.nome_completo }}</h3>
+<p class="text-muted">{{ cliente.cpf }} • {{ cliente.telefone }}</p>
+
+<form id="formNovoEmprestimo" method="post" class="card p-3">
+
+  {% csrf_token %}
+  {{ form.cliente_id }}
+
+  <div class="row g-3">
+    <div class="col-md-3">
+      <label class="form-label">{{ form.valor_emprestado.label }}</label>
+      {{ form.valor_emprestado }}
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">{{ form.qtd_parcelas.label }}</label>
+      {{ form.qtd_parcelas }}
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">{{ form.taxa_juros_mensal.label }}</label>
+      {{ form.taxa_juros_mensal }}
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">{{ form.primeiro_vencimento.label }}</label>
+      {{ form.primeiro_vencimento }}
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">{{ form.observacoes.label }}</label>
+      {{ form.observacoes }}
+    </div>
+  </div>
+
+  <hr class="my-3">
+
+  <h6 class="mb-2">Encargos por atraso</h6>
+  <div class="row g-3">
+    <div class="col-md-3">
+      <div class="form-check mt-4">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="id_tem_multa_atraso"
+          name="tem_multa_atraso"
+          {% if form.tem_multa_atraso.value %}checked{% endif %}
+        >
+        <label class="form-check-label" for="id_tem_multa_atraso">
+          Aplicar multa por atraso
+        </label>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Multa (%)</label>
+      <input
+        type="number"
+        step="0.01"
+        min="0"
+        name="multa_atraso_percent"
+        id="id_multa_atraso_percent"
+        class="form-control"
+        value="{{ form.multa_atraso_percent.value|default:'2.00' }}"
+      >
+      <small class="text-muted">Default: 2% (edite se quiser)</small>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Juros de mora (% ao mês)</label>
+      <input
+        type="number"
+        step="0.01"
+        min="0"
+        name="juros_mora_mensal_percent"
+        id="id_juros_mora_mensal_percent"
+        class="form-control"
+        value="{{ form.juros_mora_mensal_percent.value|default:'1.00' }}"
+      >
+      <small class="text-muted">Cobrança por atraso (pro rata dia)</small>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Juros ao dia (estimado)</label>
+      <input type="text" class="form-control" id="jurosDiaPreview" disabled value="-">
+      <small class="text-muted">Referência: juros_mora/30</small>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2 mt-3 flex-wrap">
+    {# 1) SEMPRE disponível: simular/atualizar simulação #}
+    {% if simulacao %}
+      <button class="btn btn-outline-primary" type="submit" name="simular" value="1"></button>
+        Atualizar simulação
+      </button>
+    {% else %}
+      <button class="btn btn-outline-primary" type="submit" name="simular" value="1"></button>
+        Fazer simulação
+      </button>
+    {% endif %}
+
+    {# 2) Só libera criar contrato se já houver simulação #}
+    {% if simulacao %}
+      <button class="btn btn-success" type="button" data-bs-toggle="modal" data-bs-target="#modalConfirmarContrato">
+        Criar contrato
+      </button>
+    {% else %}
+      <button class="btn btn-success" type="button" disabled title="Faça a simulação antes de criar o contrato">
+        Criar contrato
+      </button>
+      <span class="text-muted align-self-center small">Faça a simulação antes de criar o contrato.</span>
+    {% endif %}
+
+    <a class="btn btn-secondary" href="{% url 'emprestimos:novo_busca' %}">Voltar</a>
+  </div>
+</form>
+
+{% if simulacao %}
+  <div class="card mt-4 p-3">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <h5 class="mb-0">Simulação</h5>
+      <small class="text-muted">Edite os campos acima e clique em <strong>Atualizar simulação</strong>.</small>
+    </div>
+
+    <hr class="my-3">
+
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="card p-2">
+          <small>Parcela (bruta)</small>
+          <div>R$ {{ simulacao.parcela_bruta|floatformat:2|localize }}</div>
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <div class="card p-2">
+          <small>Parcela (aplicada)</small>
+          <div>R$ {{ simulacao.parcela_aplicada|floatformat:2|localize }}</div>
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <div class="card p-2">
+          <small>Total contrato</small>
+          <div>R$ {{ simulacao.total_contrato|floatformat:2|localize }}</div>
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <div class="card p-2">
+          <small>Ajuste arredond.</small>
+          <div>R$ {{ simulacao.ajuste|floatformat:2|localize }}</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="my-3">
+
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Vencimento</th>
+            <th class="text-end">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in simulacao.parcelas %}
+            <tr>
+              <td>{{ p.numero }}</td>
+              <td>{{ p.vencimento|date:"d/m/Y" }}</td>
+              <td class="text-end">R$ {{ p.valor|floatformat:2|localize }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <small class="text-muted">
+      Valores já arredondados para a centena superior.
+      Encargos por atraso (multa/juros de mora) não alteram a simulação — são aplicados apenas se houver atraso.
+    </small>
+  </div>
+{% endif %}
+
+{# =========================
+   MODAL: CONFIRMAR CRIAÇÃO DO CONTRATO
+   - só aparece se simulacao existir (botão já bloqueia)
+   ========================= #}
+<div class="modal fade" id="modalConfirmarContrato" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Gerar novo contrato</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+
+      <div class="modal-body">
+        <p class="mb-2">Você deseja realmente gerar um novo contrato para este cliente?</p>
+
+        <div class="alert alert-info mb-0">
+          <small>
+            <strong>Cliente:</strong> {{ cliente.nome_completo }}<br>
+            <strong>Valor:</strong> R$ {{ form.valor_emprestado.value|default:"0" }}<br>
+            <strong>Parcelas:</strong> {{ form.qtd_parcelas.value|default:"-" }}<br>
+            <strong>Juros do contrato:</strong> {{ form.taxa_juros_mensal.value|default:"-" }}% ao mês<br>
+            <strong>1º venc.:</strong> {{ form.primeiro_vencimento.value|default:"-" }}<br>
+            <hr class="my-2">
+            <strong>Encargos por atraso:</strong><br>
+            <span id="txtResumoAtraso">
+              Multa: {{ form.multa_atraso_percent.value|default:"2.00" }}% •
+              Juros mora: {{ form.juros_mora_mensal_percent.value|default:"1.00" }}% a.m. (pro rata dia)
+            </span>
+          </small>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" autofocus>Não</button>
+
+        {# SIM envia o form de verdade #}
+        <button type="submit"
+            class="btn btn-success"
+            name="confirmar_cadastro"
+            value="1"
+            form="formNovoEmprestimo">
+          Sim, gerar contrato
+      </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const chk = document.getElementById("id_tem_multa_atraso");
+  const multa = document.getElementById("id_multa_atraso_percent");
+  const jurosMes = document.getElementById("id_juros_mora_mensal_percent");
+  const jurosDia = document.getElementById("jurosDiaPreview");
+  const resumo = document.getElementById("txtResumoAtraso");
+
+  function toggleMulta(){
+    if(!chk || !multa) return;
+    multa.disabled = !chk.checked;
+    if(!chk.checked) multa.value = "0.00";
+    if(chk.checked && (!multa.value || multa.value === "0.00")) multa.value = "2.00";
+  }
+
+  function calcJurosDia(){
+    if(!jurosMes || !jurosDia) return;
+    const jm = parseFloat(String(jurosMes.value || "0").replace(",", "."));
+    const dia = (jm / 30);
+    jurosDia.value = isFinite(dia) ? (dia.toFixed(4) + "% ao dia") : "-";
+  }
+
+  function atualizarResumoModal(){
+    if(!resumo) return;
+    const temMulta = chk ? chk.checked : true;
+    const multaVal = temMulta ? (multa ? multa.value : "2.00") : "0.00";
+    const jurosVal = jurosMes ? jurosMes.value : "1.00";
+    resumo.textContent = `Multa: ${multaVal}% • Juros mora: ${jurosVal}% a.m. (pro rata dia)`;
+  }
+
+  if(chk) chk.addEventListener("change", function(){
+    toggleMulta();
+    atualizarResumoModal();
+  });
+
+  if(multa) multa.addEventListener("input", atualizarResumoModal);
+  if(jurosMes) jurosMes.addEventListener("input", function(){
+    calcJurosDia();
+    atualizarResumoModal();
+  });
+
+  toggleMulta();
+  calcJurosDia();
+  atualizarResumoModal();
+})();
+</script>
+
+{% endblock %}

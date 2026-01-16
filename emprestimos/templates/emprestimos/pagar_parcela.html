@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% load humanize l10n %}
+{% block content %}
+<h3>Pagar parcela</h3>
+
+<div class="card p-3">
+  <p class="mb-1"><strong>Contrato:</strong> {{ parcela.emprestimo.codigo_contrato }}</p>
+  <p class="mb-1"><strong>Cliente:</strong> {{ parcela.emprestimo.cliente.nome_completo }}</p>
+  <p class="mb-1"><strong>Parcela:</strong> {{ parcela.numero }}</p>
+  <p class="mb-3"><strong>Valor:</strong> R$ {{ parcela.valor|floatformat:2|localize }}</p>
+
+  <form method="post">
+    {% csrf_token %}
+    <button class="btn btn-success" type="submit">Confirmar pagamento</button>
+    <a class="btn btn-secondary" href="{% url 'emprestimos:contrato_detalhe' parcela.emprestimo.id %}">Cancelar</a>
+  </form>
+</div>
+{% endblock %}

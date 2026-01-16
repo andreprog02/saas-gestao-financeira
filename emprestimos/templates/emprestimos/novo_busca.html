@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>Novo Empréstimo</h3>
+<p class="text-muted">Busque o cliente por nome ou CPF.</p>
+
+<form method="get" class="row g-2 mb-3">
+  <div class="col-md-8">
+    {{ form.q }}
+  </div>
+  <div class="col-md-4">
+    <button class="btn btn-primary w-100" type="submit">Buscar</button>
+  </div>
+</form>
+
+{% if clientes is not None %}
+  {% if clientes %}
+    <div class="list-group">
+      {% for c in clientes %}
+        <a class="list-group-item list-group-item-action" href="{% url 'emprestimos:novo_form' c.id %}">
+          <strong>{{ c.nome_completo }}</strong><br>
+          <small class="text-muted">{{ c.cpf }} • {{ c.telefone }}</small>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

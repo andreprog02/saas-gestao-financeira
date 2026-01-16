@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h3 class="mb-0">{{ cliente.nome_completo }}</h3>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{% url 'clientes:editar' cliente.id %}">Editar</a>
+    <a class="btn btn-outline-danger" href="{% url 'clientes:excluir' cliente.id %}">Excluir</a>
+  </div>
+</div>
+
+<div class="card p-3">
+  <div class="row g-2">
+    <div class="col-md-4"><strong>CPF:</strong> {{ cliente.cpf }}</div>
+    <div class="col-md-4"><strong>Telefone:</strong> {{ cliente.telefone }}</div>
+    <div class="col-md-4"><strong>Doc:</strong> {{ cliente.doc }}</div>
+
+    <div class="col-md-3"><strong>CEP:</strong> {{ cliente.cep }}</div>
+    <div class="col-md-9"><strong>Endereço:</strong> {{ cliente.logradouro }}, {{ cliente.numero }} {% if cliente.complemento %} - {{ cliente.complemento }}{% endif %}</div>
+
+    <div class="col-md-6"><strong>Bairro:</strong> {{ cliente.bairro }}</div>
+    <div class="col-md-6"><strong>Cidade/UF:</strong> {{ cliente.cidade }}/{{ cliente.uf }}</div>
+  </div>
+</div>
+
+<div class="mt-3">
+  <a class="btn btn-primary" href="/emprestimos/novo/?q={{ cliente.cpf }}">Fazer empréstimo para este cliente</a>
+  <a class="btn btn-secondary" href="{% url 'clientes:lista' %}">Voltar</a>
+</div>
+{% endblock %}

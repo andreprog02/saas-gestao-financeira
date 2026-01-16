@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% load humanize l10n %}
+{% block content %}
+
+<div class="d-flex align-items-start justify-content-between gap-2">
+  <div>
+    <h3 class="mb-1">Contrato {{ contrato.codigo_contrato }}</h3>
+
+    <p class="text-muted mb-0">
+      Cliente: <strong>{{ contrato.cliente.nome_completo }}</strong> • {{ contrato.cliente.cpf }} <br>
+      Status: <strong>{{ contrato.status }}</strong>
+
+      {% if contrato.status == "CANCELADO" %}
+        <span class="badge text-bg-danger ms-2">Cancelado</span>
+      {% endif %}
+
+      {% if contrato.contrato_origem %}
+        <br><span class="badge text-bg-secondary">Aditivo do contrato {{ contrato.contrato_origem.codigo_contrato }}</span>
+      {% endif %}
+
+      {% if contrato.status == "CANCELADO" and contrato.cancelado_em %}
+        <br>
+        <small class="text-muted">
+          Cancelado em {{ contrato.cancelado_em|date:"d/m/Y H:i" }}
+          {% if contrato.motivo_cancelamento %} • Motivo: {{ contrato.motivo_cancelamento }}{% endif %}
+        </small>
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="d-flex gap-2">
+    {% if contrato.status == "ATIVO" or contrato.status == "ATRASADO" %}
+      <button class="btn btn-warning"
+              data-bs-toggle="modal"
+              data-bs-target="#modalRenegociar">
+        Renegociar
+      </button>
+    {% endif %}
+
+    {% if contrato.status != "CANCELADO" %}
+      <button class="btn btn-outline-danger"
+              data-bs-toggle="modal"
+              data-bs-target="#modalCancelarContrato">
+        Cancelar
+      </button>
+    {% else %}
+      <button class="btn btn-outline-success"
+              data-bs-toggle="modal"
+              data-bs-target="#modalReabrirContrato">
+        Desfazer cancelamento
+      </button>
+    {% endif %}
+  </div>
+</div>
+
+<hr class="my-3">
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card p-2">
+      <small>Valor emprestado</small>
+      <div>R$ {{ contrato.valor_emprestado|floatformat:2|localize }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card p-2">
+      <small>Parcela aplicada</small>
+      <div>R$ {{ contrato.valor_parcela_aplicada|floatformat:2|localize }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card p-2">
+      <small>Total contrato</small>
+      <div>R$ {{ contrato.total_contrato|floatformat:2|localize }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card p-2">
+      <small>Ajuste arredond.</small>
+      <div>R$ {{ contrato.ajuste_arredondamento|floatformat:2|localize }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-sm table-striped align-middle">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Vencimento</th>
+        <th class="text-end">Valor</th>
+        <th>Status</th>
+        <th class="text-end"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in parcelas %}
+        <tr>
+          <td>{{ p.numero }}</td>
+          <td>{{ p.vencimento|date:"d/m/Y" }}</td>
+          <td class="text-end">R$ {{ p.valor|floatformat:2|localize }}</td>
+          <td>{{ p.status }}</td>
+          <td class="text-end">
+            {% if p.status == "ABERTA" and contrato.status != "CANCELADO" %}
+              <a class="btn btn-sm btn-success" href="{% url 'emprestimos:pagar_parcela' p.id %}">Pagar</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# =========================
+   MODAL 1: CONFIRMAÇÃO (Renegociar)
+   ========================= #}
+<div class="modal fade" id="modalRenegociar" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Renegociar contrato</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Você deseja mesmo renegociar este contrato?</p>
+        <div class="alert alert-warning mb-0">
+          <strong>Contrato:</strong> {{ contrato.codigo_contrato }}<br>
+          <small class="text-muted">
+            Ao finalizar, as parcelas em aberto do contrato atual serão liquidadas por renegociação e um novo contrato (aditivo) será criado.
+          </small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal" autofocus>Não</button>
+
+        <button class="btn btn-warning" type="button"
+                data-bs-dismiss="modal"
+                data-bs-toggle="modal"
+                data-bs-target="#modalAditivo">
+          Sim
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# =========================
+   MODAL 2: ADITIVO (Renegociação)
+   ========================= #}
+<div class="modal fade" id="modalAditivo" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{% url 'emprestimos:renegociar' contrato.id %}">
+        {% csrf_token %}
+
+        <div class="modal-header">
+          <h5 class="modal-title">Aditivo ao contrato {{ contrato.codigo_contrato }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Valor de entrada (opcional)</label>
+              <input type="number" step="0.01" min="0" name="entrada" class="form-control" placeholder="0,00">
+              <small class="text-muted">Se houver entrada, ela será abatida do saldo renegociado.</small>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Taxa de juros</label>
+              <select name="usar_taxa_antiga" id="usar_taxa_antiga" class="form-select">
+                <option value="1">Manter taxa atual ({{ contrato.taxa_juros_mensal }}%)</option>
+                <option value="0">Usar nova taxa</option>
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Nova taxa (%)</label>
+              <input type="number" step="0.01" min="0" name="nova_taxa" id="nova_taxa" class="form-control" placeholder="Ex: 5,00" disabled>
+              <small class="text-muted">Só preencha se escolher “Usar nova taxa”.</small>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Novo vencimento (1ª parcela)</label>
+              <input type="date" name="novo_vencimento" class="form-control" required>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Quantidade de parcelas</label>
+              <input type="number" name="qtd_parcelas" class="form-control" min="1" max="360" required>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Taxa atual (referência)</label>
+              <input type="text" class="form-control" value="{{ contrato.taxa_juros_mensal }}% ao mês" disabled>
+            </div>
+          </div>
+
+          <hr class="my-3">
+          <div class="alert alert-info mb-0">
+            <small>
+              <strong>Obs:</strong> O novo contrato será criado com as parcelas arredondadas para a <strong>centena superior</strong> (ex: 1789 → 1800).
+            </small>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-success" type="submit">Finalizar renegociação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    const sel = document.getElementById("usar_taxa_antiga");
+    const nova = document.getElementById("nova_taxa");
+    if(!sel || !nova) return;
+
+    function toggle(){
+      const usarAntiga = sel.value === "1";
+      nova.disabled = usarAntiga;
+      if(usarAntiga) nova.value = "";
+    }
+    sel.addEventListener("change", toggle);
+    toggle();
+  })();
+</script>
+
+{# =========================
+   MODAL: CANCELAR CONTRATO (Motivo + Observação + Senha)
+   ========================= #}
+<div class="modal fade" id="modalCancelarContrato" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" action="{% url 'emprestimos:cancelar_contrato' contrato.id %}">
+      {% csrf_token %}
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Cancelar contrato</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <p class="mb-2">
+            Você tem certeza que deseja cancelar o contrato <strong>{{ contrato.codigo_contrato }}</strong>?
+          </p>
+
+          <div class="alert alert-warning">
+            <small>
+              Isso vai marcar o contrato como <strong>CANCELADO</strong> e as parcelas em aberto como <strong>CANCELADAS</strong>.
+              O histórico será mantido.
+            </small>
+          </div>
+
+          <label class="form-label mt-2">Motivo do cancelamento</label>
+          <input type="text" name="motivo" class="form-control" required
+                 placeholder="Ex: Cadastro errado / Cliente desistiu / Ajuste interno">
+
+          <label class="form-label mt-2">Observação (opcional)</label>
+          <textarea name="observacao" class="form-control" rows="3"
+                    placeholder="Detalhes adicionais..."></textarea>
+
+          <label class="form-label mt-2">Senha administrativa</label>
+          <input type="password" name="senha" class="form-control" required
+                 placeholder="Digite a senha para confirmar">
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" autofocus>Não</button>
+          <button type="submit" class="btn btn-danger">Sim, cancelar</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# =========================
+   MODAL: REABRIR CONTRATO
+   ========================= #}
+<div class="modal fade" id="modalReabrirContrato" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" action="{% url 'emprestimos:reabrir_contrato' contrato.id %}">
+      {% csrf_token %}
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Desfazer cancelamento</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <p>Você deseja reabrir o contrato <strong>{{ contrato.codigo_contrato }}</strong>?</p>
+          <div class="alert alert-info">
+            <small>As parcelas canceladas voltarão para <strong>ABERTA</strong> e o contrato ficará <strong>ATIVO</strong>.</small>
+          </div>
+
+          <label class="form-label">Senha administrativa</label>
+          <input type="password" name="senha" class="form-control" required>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" autofocus>Não</button>
+          <button type="submit" class="btn btn-success">Sim, reabrir</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# =========================
+   HISTÓRICO (LOGS)
+   ========================= #}
+<hr class="my-4">
+<h5 class="mb-2">Histórico</h5>
+
+<div class="table-responsive">
+  <table class="table table-sm table-striped align-middle">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Ação</th>
+        <th>Usuário</th>
+        <th>Motivo</th>
+        <th>Observação</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lg in contrato.logs.all %}
+        <tr>
+          <td>{{ lg.criado_em|date:"d/m/Y H:i" }}</td>
+          <td>{{ lg.acao }}</td>
+          <td>
+            {% if lg.usuario %}
+              {{ lg.usuario.username }}
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+          <td>{{ lg.motivo|default:"-" }}</td>
+          <td>{{ lg.observacao|default:"-" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="text-muted">Sem histórico ainda.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

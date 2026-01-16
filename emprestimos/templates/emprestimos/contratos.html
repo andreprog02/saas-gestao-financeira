@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load humanize l10n %}
+{% block content %}
+<h3>Contratos</h3>
+
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Contrato</th>
+        <th>Cliente</th>
+        <th>Status</th>
+        <th class="text-end">Valor</th>
+        <th>Parcelas</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in contratos %}
+        <tr>
+          <td>{{ c.codigo_contrato }}</td>
+          <td>{{ c.cliente.nome_completo }}</td>
+          <td>{{ c.status }}</td>
+          <td class="text-end">R$ {{ c.valor_emprestado|floatformat:2|localize }}</td>
+          <td>{{ c.qtd_parcelas }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'emprestimos:contrato_detalhe' c.id %}">Abrir</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="text-center text-muted">Nenhum contrato cadastrado.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
