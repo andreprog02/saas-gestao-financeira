@@ -5,6 +5,9 @@ from django.db.models import Sum
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 
+# NOVO IMPORT: Para registrar no livro caixa
+from financeiro.models import Transacao
+
 from .models import Emprestimo, Parcela, EmprestimoStatus, ParcelaStatus
 from .services import simular
 from .utils import gerar_codigo_contrato
@@ -99,6 +102,32 @@ def renegociar(request, emprestimo_id: int):
         )
         for p in parcelas
     ])
+
+    # NOVA PARTE: Registrar transações no livro caixa
+    if entrada > 0:
+        Transacao.objects.create(
+            tipo='PAGAMENTO_ENTRADA',
+            valor=entrada,
+            descricao=f"Entrada na renegociação do contrato {contrato.codigo_contrato}",
+            emprestimo=contrato  # Link com o contrato antigo
+        )
+
+    # Registrar quitação fictícia do saldo restante (positivo, como entrada)
+    if saldo > 0:
+        Transacao.objects.create(
+            tipo='PAGAMENTO_ENTRADA',
+            valor=saldo,
+            descricao=f"Quitação por renegociação do contrato {contrato.codigo_contrato}",
+            emprestimo=contrato  # Link com o contrato antigo
+        )
+
+        # Registrar saída para o novo empréstimo (negativo)
+        Transacao.objects.create(
+            tipo='EMPRESTIMO_SAIDA',
+            valor=-saldo,  # Negativo para saída
+            descricao=f"Novo empréstimo renegociado: {novo_contrato.codigo_contrato}",
+            emprestimo=novo_contrato  # Link com o novo contrato
+        )
 
     messages.success(request, f"Renegociação finalizada. Novo contrato: {codigo}")
     return redirect("emprestimos:contrato_detalhe", emprestimo_id=novo_contrato.id)
