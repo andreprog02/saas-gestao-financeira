@@ -605,124 +605,140 @@ def pagar_parcela(request, parcela_id: int):
 
 @transaction.atomic
 def renegociar(request, emprestimo_id):
-    print(f"--- INICIANDO RENEGOCIAÇÃO DO CONTRATO ID {emprestimo_id} ---") # DEBUG
-    
     contrato = get_object_or_404(Emprestimo, id=emprestimo_id)
 
     if request.method != "POST":
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
-    # 1. Obter dados
-    entrada = Decimal(request.POST.get("entrada") or "0.00")
-    usar_taxa_antiga = request.POST.get("usar_taxa_antiga") == "1"
-    nova_taxa = Decimal(request.POST.get("nova_taxa") or contrato.taxa_juros_mensal)
-    qtd_parcelas = int(request.POST["qtd_parcelas"])
-    novo_vencimento = request.POST["novo_vencimento"]
+    try:
+        # 1. TRATAMENTO DE DADOS (CORREÇÃO DA VÍRGULA E PONTO)
+        entrada_str = request.POST.get("entrada", "0.00").replace(',', '.')
+        # Se vier vazio ou inválido, assume 0.00
+        entrada = Decimal(entrada_str) if entrada_str.strip() else Decimal("0.00")
 
-    taxa = contrato.taxa_juros_mensal if usar_taxa_antiga else nova_taxa
+        usar_taxa_antiga = request.POST.get("usar_taxa_antiga") == "1"
+        
+        # Tratamento da nova taxa também
+        nova_taxa_str = request.POST.get("nova_taxa", "").replace(',', '.')
+        if nova_taxa_str.strip():
+            nova_taxa = Decimal(nova_taxa_str)
+        else:
+            nova_taxa = contrato.taxa_juros_mensal
+        
+        qtd_parcelas = int(request.POST["qtd_parcelas"])
+        novo_vencimento = request.POST["novo_vencimento"]
 
-    # 2. Calcular Saldo para Quitação
-    saldo_total_antigo = contrato.parcelas.filter(
-        status=ParcelaStatus.ABERTA
-    ).aggregate(
-        total=models.Sum("valor")
-    )["total"] or Decimal("0.00")
+        taxa = contrato.taxa_juros_mensal if usar_taxa_antiga else nova_taxa
 
-    # 3. Calcular valor a ser financiado
-    valor_novo_emprestimo = saldo_total_antigo - entrada
-    
-    print(f"Saldo Antigo: {saldo_total_antigo} | Entrada: {entrada} | Novo Financiamento: {valor_novo_emprestimo}") # DEBUG
+        # 2. Calcular Saldo Devedor Total (o que ele deve HOJE)
+        saldo_total_antigo = contrato.parcelas.filter(
+            status=ParcelaStatus.ABERTA
+        ).aggregate(
+            total=models.Sum("valor")
+        )["total"] or Decimal("0.00")
 
-    if valor_novo_emprestimo <= 0:
-        messages.error(request, "A entrada cobre todo o saldo. Use a quitação antecipada.")
-        return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+        # 3. Calcular valor a ser financiado (Saldo - Entrada)
+        valor_novo_emprestimo = saldo_total_antigo - entrada
 
-    # --- MOVIMENTAÇÕES FINANCEIRAS ---
-    # Aqui garantimos que o saldo do caixa bata exatamente (Net = +Entrada)
-    
-    # A) Entrada (Dinheiro Real)
-    if entrada > 0:
+        if valor_novo_emprestimo <= 0:
+            messages.error(request, "A entrada cobre todo o saldo. Use a quitação antecipada.")
+            return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+
+        # --- MOVIMENTAÇÕES NO CAIXA (Lógica de 3 etapas) ---
+
+        # A) Entrada do Dinheiro Real (Sinal) - AUMENTA SALDO
+        if entrada > 0:
+            Transacao.objects.create(
+                tipo='DEPOSITO',
+                valor=entrada,
+                descricao=f"Entrada Renegociação {contrato.codigo_contrato}",
+                emprestimo=contrato
+            )
+
+        # B) Liquidação do Saldo Antigo (Dinheiro Virtual) - AUMENTA SALDO (Contábil)
+        # Registra que o saldo remanescente do contrato velho foi "pago"
         Transacao.objects.create(
-            tipo='DEPOSITO',
-            valor=entrada,
-            descricao=f"Entrada Renegociação {contrato.codigo_contrato}",
+            tipo='PAGAMENTO_ENTRADA',
+            valor=valor_novo_emprestimo,
+            descricao=f"Liq. Saldo Anterior {contrato.codigo_contrato} (Refinanciamento)",
             emprestimo=contrato
         )
-        print(">>> Transação de Entrada criada") # DEBUG
 
-    # B) Quitação do Antigo (Dinheiro Virtual Entrando para zerar o velho)
-    # Isso corresponde ao valor que está sendo refinanciado
-    Transacao.objects.create(
-        tipo='PAGAMENTO_ENTRADA',
-        valor=valor_novo_emprestimo,
-        descricao=f"Liq. Contrato {contrato.codigo_contrato} (Refinanciamento)",
-        emprestimo=contrato
-    )
-    print(">>> Transação de Liquidação criada") # DEBUG
-
-    # C) Saída do Novo (Dinheiro Virtual Saindo para criar o novo)
-    # Criamos a transação e guardamos na variável para vincular ao novo contrato depois
-    transacao_saida = Transacao.objects.create(
-        tipo='EMPRESTIMO_SAIDA',
-        valor=-valor_novo_emprestimo, # Negativo
-        descricao=f"Renegociação {contrato.codigo_contrato} (Gerando Novo)",
-        emprestimo=None 
-    )
-    print(">>> Transação de Saída criada") # DEBUG
-
-    # ------------------------------
-
-    # 4. Baixar contrato antigo
-    contrato.parcelas.filter(status=ParcelaStatus.ABERTA).update(
-        status=ParcelaStatus.LIQUIDADA_RENEGOCIACAO
-    )
-    contrato.status = EmprestimoStatus.RENEGOCIADO
-    contrato.save()
-
-    # 5. Criar novo contrato
-    codigo_novo = gerar_codigo_contrato()
-    parcela_bruta, parcela_aplicada, total, ajuste, parcelas = simular(
-        valor_novo_emprestimo, qtd_parcelas, taxa, novo_vencimento
-    )
-
-    novo = Emprestimo.objects.create(
-        cliente=contrato.cliente,
-        contrato_origem=contrato,
-        codigo_contrato=codigo_novo,
-        valor_emprestado=valor_novo_emprestimo,
-        qtd_parcelas=qtd_parcelas,
-        taxa_juros_mensal=taxa,
-        primeiro_vencimento=novo_vencimento,
-        valor_parcela_aplicada=parcela_aplicada,
-        total_contrato=total,
-        ajuste_arredondamento=ajuste,
-        status=EmprestimoStatus.ATIVO
-    )
-
-    Parcela.objects.bulk_create([
-        Parcela(
-            emprestimo=novo,
-            numero=p.numero,
-            vencimento=p.vencimento,
-            valor=p.valor
+        # C) Saída do Novo Contrato (Dinheiro Virtual) - DIMINUI SALDO (Contábil)
+        # Registra que saiu dinheiro para financiar o novo contrato
+        # O resultado de (B - C) é zero, sobrando apenas a Entrada (A) no caixa real.
+        transacao_saida = Transacao.objects.create(
+            tipo='EMPRESTIMO_SAIDA',
+            valor=-valor_novo_emprestimo,
+            descricao=f"Renegociação {contrato.codigo_contrato} (Novo Saldo)",
+            emprestimo=None # Vamos vincular abaixo
         )
-        for p in parcelas
-    ])
 
-    # 6. Atualizar a transação de saída com o novo contrato
-    transacao_saida.emprestimo = novo
-    transacao_saida.descricao = f"Renegociação {contrato.codigo_contrato} (Gerou {novo.codigo_contrato})"
-    transacao_saida.save()
+        # ------------------------------
 
-    # Logs
-    ContratoLog.objects.create(contrato=contrato, acao=ContratoLog.Acao.RENEGOCIADO, usuario=request.user if request.user.is_authenticated else None, motivo=f"Gerou {novo.codigo_contrato}")
-    ContratoLog.objects.create(contrato=novo, acao=ContratoLog.Acao.CRIADO, usuario=request.user if request.user.is_authenticated else None, motivo=f"Origem: {contrato.codigo_contrato}")
+        # 4. Baixar contrato antigo
+        contrato.parcelas.filter(status=ParcelaStatus.ABERTA).update(
+            status=ParcelaStatus.LIQUIDADA_RENEGOCIACAO
+        )
+        contrato.status = EmprestimoStatus.RENEGOCIADO
+        contrato.save()
 
-    print("--- RENEGOCIAÇÃO CONCLUÍDA COM SUCESSO ---") # DEBUG
-    messages.success(request, f"Renegociação concluída! Novo contrato: {codigo_novo}")
-    return redirect("emprestimos:contrato_detalhe", emprestimo_id=novo.id)
+        # 5. Criar novo contrato
+        codigo_novo = gerar_codigo_contrato()
+        parcela_bruta, parcela_aplicada, total, ajuste, parcelas = simular(
+            valor_novo_emprestimo, qtd_parcelas, taxa, novo_vencimento
+        )
 
+        novo = Emprestimo.objects.create(
+            cliente=contrato.cliente,
+            contrato_origem=contrato,
+            codigo_contrato=codigo_novo,
+            valor_emprestado=valor_novo_emprestimo,
+            qtd_parcelas=qtd_parcelas,
+            taxa_juros_mensal=taxa,
+            primeiro_vencimento=novo_vencimento,
+            valor_parcela_aplicada=parcela_aplicada,
+            total_contrato=total,
+            ajuste_arredondamento=ajuste,
+            status=EmprestimoStatus.ATIVO
+        )
 
+        Parcela.objects.bulk_create([
+            Parcela(
+                emprestimo=novo,
+                numero=p.numero,
+                vencimento=p.vencimento,
+                valor=p.valor
+            )
+            for p in parcelas
+        ])
+
+        # 6. Vincular a transação de saída ao novo contrato
+        transacao_saida.emprestimo = novo
+        transacao_saida.descricao = f"Renegociação {contrato.codigo_contrato} (Gerou {novo.codigo_contrato})"
+        transacao_saida.save()
+
+        # Logs
+        ContratoLog.objects.create(
+            contrato=contrato,
+            acao=ContratoLog.Acao.RENEGOCIADO,
+            usuario=request.user if request.user.is_authenticated else None,
+            motivo=f"Gerou contrato {novo.codigo_contrato}"
+        )
+        ContratoLog.objects.create(
+            contrato=novo,
+            acao=ContratoLog.Acao.CRIADO,
+            usuario=request.user if request.user.is_authenticated else None,
+            motivo=f"Origem: {contrato.codigo_contrato}"
+        )
+
+        messages.success(request, f"Renegociação concluída! Novo contrato: {codigo_novo}")
+        return redirect("emprestimos:contrato_detalhe", emprestimo_id=novo.id)
+
+    except Exception as e:
+        # Se der erro, mostra na tela
+        messages.error(request, f"Erro ao renegociar: {str(e)}")
+        return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
 
 @transaction.atomic
