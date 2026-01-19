@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.http import FileResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST
+from django.utils.dateparse import parse_date
 
 # Financeiro Imports
 from financeiro.models import Transacao, calcular_saldo_atual
@@ -611,30 +612,33 @@ def renegociar(request, emprestimo_id):
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
     try:
-        # 1. TRATAMENTO ROBUSTO DE DADOS (Remove Ponto de Milhar e Ajusta Vírgula)
-        # Ex: "1.200,50" -> Remove ponto ("1200,50") -> Troca vírgula ("1200.50")
+        # 1. TRATAMENTO DE DADOS
         
+        # A) Valores Monetários (Remove ponto milhar, ajusta vírgula)
         raw_entrada = request.POST.get("entrada", "")
         if raw_entrada:
-            # Primeiro remove os pontos de milhar, depois troca a vírgula decimal
-            entrada_clean = raw_entrada.replace('.', '').replace(',', '.')
-            entrada = Decimal(entrada_clean)
+            entrada = Decimal(raw_entrada.replace('.', '').replace(',', '.'))
         else:
             entrada = Decimal("0.00")
 
-        # Tratamento da Taxa
+        # B) Taxa de Juros
         usar_taxa_antiga = request.POST.get("usar_taxa_antiga") == "1"
         raw_nova_taxa = request.POST.get("nova_taxa", "")
         
         if raw_nova_taxa and not usar_taxa_antiga:
-            taxa_clean = raw_nova_taxa.replace('.', '').replace(',', '.')
-            nova_taxa = Decimal(taxa_clean)
+            nova_taxa = Decimal(raw_nova_taxa.replace('.', '').replace(',', '.'))
         else:
             nova_taxa = contrato.taxa_juros_mensal
         
-        # Outros campos
+        # C) Parcelas e Data (AQUI ESTAVA O ERRO)
         qtd_parcelas = int(request.POST["qtd_parcelas"])
-        novo_vencimento = request.POST["novo_vencimento"]
+        
+        # Correção: Converter string 'YYYY-MM-DD' para objeto Date do Python
+        novo_vencimento_str = request.POST.get("novo_vencimento")
+        novo_vencimento = parse_date(novo_vencimento_str)
+        
+        if not novo_vencimento:
+            raise ValueError("Data de vencimento inválida.")
 
         taxa = contrato.taxa_juros_mensal if usar_taxa_antiga else nova_taxa
 
@@ -690,6 +694,8 @@ def renegociar(request, emprestimo_id):
 
         # 5. Criar novo contrato
         codigo_novo = gerar_codigo_contrato()
+        
+        # Agora 'novo_vencimento' é um objeto Date, então simular() vai funcionar
         parcela_bruta, parcela_aplicada, total, ajuste, parcelas = simular(
             valor_novo_emprestimo, qtd_parcelas, taxa, novo_vencimento
         )
@@ -741,9 +747,9 @@ def renegociar(request, emprestimo_id):
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=novo.id)
 
     except Exception as e:
+        # Se der erro, mostra na tela
         messages.error(request, f"Erro ao renegociar: {str(e)}")
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
-
 
 @transaction.atomic
 def cancelar_contrato(request, emprestimo_id: int):
