@@ -1,26 +1,278 @@
-from django.shortcuts import render
+# Arquivo: emprestimos/views.py
 
 from decimal import Decimal
-from django.contrib import messages
-from django.db import transaction
-from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
+import io
 
-#from clientes.models import Cliente
+# Django Imports
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib import messages
+from django.db import transaction, models
+from django.db.models import Q
+from django.utils import timezone
+from django.http import FileResponse
+from django.conf import settings
+from django.views.decorators.http import require_POST
+
+# Financeiro Imports
+from financeiro.models import Transacao, calcular_saldo_atual
+
+# Third-party Imports
+from num2words import num2words 
+
+# ReportLab Imports (PDF)
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+
+# App Imports
+from clientes.models import Cliente
 from .forms import SelecionarClienteForm, NovoEmprestimoForm
-from .models import Emprestimo, Parcela, ParcelaStatus
+from .models import Emprestimo, Parcela, ParcelaStatus, ContratoLog, EmprestimoStatus
 from .services import simular
 from .utils import gerar_codigo_contrato
-from clientes.models import Cliente
-from django.views.decorators.http import require_http_methods
-from django.conf import settings
-
-from .models import ContratoLog
-from .models import Emprestimo, EmprestimoStatus
 
 
+# =============================================================================
+#  PDF GENERATION
+# =============================================================================
+
+def contrato_pdf(request, emprestimo_id: int):
+    # 1. Buscar dados
+    contrato = get_object_or_404(Emprestimo.objects.select_related("cliente"), id=emprestimo_id)
+    cliente = contrato.cliente
+    parcelas = contrato.parcelas.all().order_by("numero")
+
+    # 2. Configurar o buffer e o documento
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.5*cm, leftMargin=1.5*cm,
+        topMargin=1.5*cm, bottomMargin=1.5*cm
+    )
+
+    # 3. Estilos de texto
+    styles = getSampleStyleSheet()
+    
+    style_titulo = ParagraphStyle(
+        'Titulo',
+        parent=styles['Heading1'],
+        alignment=TA_CENTER,
+        fontSize=14,
+        spaceAfter=10
+    )
+    style_subtitulo = ParagraphStyle(
+        'Subtitulo',
+        parent=styles['Heading2'],
+        alignment=TA_CENTER,
+        fontSize=12,
+        spaceAfter=10
+    )
+    style_normal = ParagraphStyle(
+        'Normal_Justificado',
+        parent=styles['Normal'],
+        alignment=TA_JUSTIFY,
+        fontSize=10,
+        leading=12,
+        spaceAfter=6
+    )
+    style_centro = ParagraphStyle(
+        'Centro',
+        parent=styles['Normal'],
+        alignment=TA_CENTER,
+        fontSize=10
+    )
+
+    elements = []
+
+    # --- DADOS DA EMPRESA ---
+    empresa_nome = "SUA EMPRESA DE CRÉDITO LTDA"
+    empresa_cnpj = "00.000.000/0001-00"
+    cidade = "São Paulo"
+
+    # --- FUNÇÃO: DATA EM PORTUGUÊS ---
+    def data_pt(data_obj):
+        meses = {
+            1: 'janeiro', 2: 'fevereiro', 3: 'março', 4: 'abril',
+            5: 'maio', 6: 'junho', 7: 'julho', 8: 'agosto',
+            9: 'setembro', 10: 'outubro', 11: 'novembro', 12: 'dezembro'
+        }
+        return f"{data_obj.day} de {meses[data_obj.month]} de {data_obj.year}"
+
+    data_atual_extenso = data_pt(timezone.localdate())
+
+    # --- FUNÇÃO: FORMATAR MOEDA ---
+    def fmt_valor(v):
+        val_str = f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        try:
+            extenso = num2words(v, lang='pt_BR', to='currency')
+        except:
+            extenso = str(v)
+        return f"{val_str} ({extenso})"
+
+    # ==========================================================
+    # PÁGINA 1: CONTRATO
+    # ==========================================================
+    elements.append(Paragraph(f"CONTRATO DE MÚTUO Nº {contrato.codigo_contrato}", style_titulo))
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Identificação
+    texto_partes = f"""
+    <b>MUTUANTE:</b> {empresa_nome}, inscrita no CNPJ sob nº {empresa_cnpj}.<br/><br/>
+    <b>MUTUÁRIO:</b> {cliente.nome_completo}, CPF nº {cliente.cpf}, 
+    residente e domiciliado em {cliente.logradouro}, {cliente.numero} - {cliente.bairro}, 
+    {cliente.cidade}/{cliente.uf}.
+    """
+    elements.append(Paragraph(texto_partes, style_normal))
+
+    # Cláusulas
+    elements.append(Paragraph("<b>1. DO OBJETO</b>", style_normal))
+    texto_obj = f"""
+    O presente contrato tem por objeto o empréstimo da quantia de 
+    <b>{fmt_valor(contrato.valor_emprestado)}</b>, entregues ao MUTUÁRIO neste ato.
+    """
+    elements.append(Paragraph(texto_obj, style_normal))
+
+    elements.append(Paragraph("<b>2. DO PAGAMENTO</b>", style_normal))
+    texto_pag = f"""
+    O MUTUÁRIO pagará à MUTUANTE a quantia total de 
+    <b>{fmt_valor(contrato.total_contrato)}</b>, através de 
+    <b>{contrato.qtd_parcelas}</b> parcelas mensais e sucessivas de 
+    <b>{fmt_valor(contrato.valor_parcela_aplicada)}</b>.
+    """
+    elements.append(Paragraph(texto_pag, style_normal))
+
+    elements.append(Paragraph("<b>3. DOS ENCARGOS</b>", style_normal))
+    texto_juros = f"O valor do empréstimo foi calculado com juros de {contrato.taxa_juros_mensal}% ao mês."
+    
+    if contrato.tem_multa_atraso:
+        texto_juros += f"""<br/>
+        <b>Parágrafo Único:</b> O atraso no pagamento de qualquer parcela implicará na cobrança de multa de 
+        {contrato.multa_atraso_percent}% e juros de mora de 
+        {contrato.juros_mora_mensal_percent}% ao mês, calculados pro rata die.
+        """
+    else:
+        texto_juros += "<br/>Não há multa por atraso contratada."
+    elements.append(Paragraph(texto_juros, style_normal))
+
+    # Tabela de Parcelas
+    elements.append(Paragraph("<b>4. DEMONSTRATIVO DAS PARCELAS</b>", style_normal))
+    
+    dados_tabela = [["Parcela", "Vencimento", "Valor"]]
+    for p in parcelas:
+        dados_tabela.append([str(p.numero), p.vencimento.strftime("%d/%m/%Y"), f"R$ {p.valor:,.2f}"])
+
+    # Ajustando a largura
+    tabela = Table(dados_tabela, colWidths=[2.5*cm, 4*cm, 4*cm])
+    style_table = TableStyle([
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ('TOPPADDING', (0,0), (-1,-1), 2),
+    ])
+    tabela.setStyle(style_table)
+    elements.append(tabela)
+
+    elements.append(Spacer(1, 1.0*cm))
+    elements.append(Paragraph(f"{cidade}, {data_atual_extenso}", style_centro))
+    elements.append(Spacer(1, 1.5*cm))
+
+    # Assinaturas
+    assinaturas = [
+        ["_______________________________", "_______________________________"],
+        [f"{empresa_nome}", f"{cliente.nome_completo}"],
+        ["Mutuante", "Mutuário"]
+    ]
+    tab_ass = Table(assinaturas, colWidths=[8*cm, 8*cm])
+    tab_ass.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('FONTSIZE', (0,0), (-1,-1), 10),
+    ]))
+    elements.append(tab_ass)
+
+    # ==========================================================
+    # PÁGINA 2: NOTA PROMISSÓRIA
+    # ==========================================================
+    elements.append(PageBreak()) 
+
+    vencimento_final = parcelas.last().vencimento
+    data_venc_extenso = data_pt(vencimento_final)
+    
+    try:
+        total_extenso_upper = num2words(contrato.total_contrato, lang='pt_BR', to='currency').upper()
+    except:
+        total_extenso_upper = "VALOR LEGÍVEL"
+
+    # Conteúdo interno da Promissória
+    conteudo_np = []
+    
+    # Cabeçalho NP
+    linha_topo = [
+        [f"Nº {contrato.codigo_contrato}", f"R$ {contrato.total_contrato:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")]
+    ]
+    tb_topo = Table(linha_topo, colWidths=[8*cm, 8*cm])
+    tb_topo.setStyle(TableStyle([
+        ('ALIGN', (0,0), (0,0), 'LEFT'), 
+        ('ALIGN', (1,0), (1,0), 'RIGHT'), 
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 12),
+    ]))
+    conteudo_np.append(tb_topo)
+    
+    conteudo_np.append(Paragraph("<b>NOTA PROMISSÓRIA</b>", style_titulo))
+    conteudo_np.append(Spacer(1, 1*cm))
+    
+    texto_promissoria = f"""
+    No dia <b>{data_venc_extenso}</b>, pagarei(emos) por esta única via de NOTA PROMISSÓRIA 
+    a <b>{empresa_nome}</b>, inscrita no CNPJ {empresa_cnpj}, ou à sua ordem, a quantia de:
+    <br/><br/><br/>
+    <b>{total_extenso_upper}</b>
+    <br/><br/><br/>
+    Em moeda corrente deste país, pagável em {cidade}.
+    """
+    conteudo_np.append(Paragraph(texto_promissoria, style_normal))
+    conteudo_np.append(Spacer(1, 2*cm))
+    
+    # Dados Emitente NP
+    texto_emitente = f"""
+    <b>Emitente:</b> {cliente.nome_completo}<br/>
+    <b>CPF/CNPJ:</b> {cliente.cpf}<br/>
+    <b>Endereço:</b> {cliente.logradouro}, {cliente.numero} - {cliente.bairro} - {cliente.cidade}/{cliente.uf}
+    """
+    conteudo_np.append(Paragraph(texto_emitente, style_normal))
+    
+    conteudo_np.append(Spacer(1, 2.5*cm))
+    conteudo_np.append(Paragraph("____________________________________________________", style_centro))
+    conteudo_np.append(Paragraph(f"{cliente.nome_completo}", style_centro))
+
+    # Container da Promissória com Borda
+    tabela_borda = Table([[conteudo_np]], colWidths=[17*cm])
+    tabela_borda.setStyle(TableStyle([
+        ('BOX', (0,0), (-1,-1), 2, colors.black),
+        ('TOPPADDING', (0,0), (-1,-1), 20),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 20),
+        ('LEFTPADDING', (0,0), (-1,-1), 20),
+        ('RIGHTPADDING', (0,0), (-1,-1), 20),
+    ]))
+    
+    elements.append(Spacer(1, 2*cm))
+    elements.append(tabela_borda)
+
+    # 4. Gerar e Retornar
+    doc.build(elements)
+    buffer.seek(0)
+    return FileResponse(buffer, as_attachment=False, filename=f"Contrato_{contrato.codigo_contrato}.pdf")
 
 
+# =============================================================================
+#  VIEWS DE CADASTRO E BUSCA
+# =============================================================================
 
 def novo_emprestimo_busca_cliente(request):
     """
@@ -31,6 +283,7 @@ def novo_emprestimo_busca_cliente(request):
 
     if form.is_valid():
         q = form.cleaned_data["q"].strip()
+        
         clientes = (
             Cliente.objects.filter(nome_completo__icontains=q)
             | Cliente.objects.filter(cpf__icontains=q)
@@ -61,21 +314,52 @@ def novo_emprestimo_form(request, cliente_id: int):
 
             # Se clicou em "Cadastrar"
             if "confirmar_cadastro" in request.POST:
+                valor_solicitado = form.cleaned_data["valor_emprestado"]
+                
+                # --- [NOVO] TRAVA DE SALDO ---
+                # Verifica se há dinheiro em caixa antes de prosseguir
+                saldo_atual = calcular_saldo_atual()
+                if saldo_atual < valor_solicitado:
+                    messages.error(request, f"Saldo insuficiente. Disponível: R$ {saldo_atual:,.2f}. Necessário: R$ {valor_solicitado:,.2f}")
+                    # Retorna para a mesma tela mantendo a simulação visível
+                    return render(request, "emprestimos/novo_form.html", {
+                        "cliente": cliente,
+                        "form": form,
+                        "simulacao": {
+                            "parcela_bruta": parcela_bruta,
+                            "parcela_aplicada": parcela_aplicada,
+                            "total_contrato": total_contrato,
+                            "ajuste": ajuste,
+                            "parcelas": parcelas,
+                        },
+                    })
+                # -----------------------------
+
                 with transaction.atomic():
                     codigo = gerar_codigo_contrato()
+                    
+                    # Pega as configs de multa do form
+                    tem_multa = form.cleaned_data.get("tem_multa_atraso", False)
+                    multa_percent = form.cleaned_data.get("multa_atraso_percent") or Decimal("0.00")
+                    juros_mora_percent = form.cleaned_data.get("juros_mora_mensal_percent") or Decimal("0.00")
 
                     emprestimo = Emprestimo.objects.create(
                         cliente=cliente,
                         codigo_contrato=codigo,
-                        valor_emprestado=form.cleaned_data["valor_emprestado"],
+                        valor_emprestado=valor_solicitado,
                         qtd_parcelas=form.cleaned_data["qtd_parcelas"],
                         taxa_juros_mensal=form.cleaned_data["taxa_juros_mensal"],
                         primeiro_vencimento=form.cleaned_data["primeiro_vencimento"],
                         valor_parcela_aplicada=parcela_aplicada,
                         total_contrato=total_contrato,
-                        total_juros=(total_contrato - form.cleaned_data["valor_emprestado"]).quantize(Decimal("0.01")),
+                        total_juros=(total_contrato - valor_solicitado).quantize(Decimal("0.01")),
                         ajuste_arredondamento=ajuste,
                         observacoes=form.cleaned_data.get("observacoes", ""),
+                        
+                        # Campos de atraso
+                        tem_multa_atraso=tem_multa,
+                        multa_atraso_percent=multa_percent,
+                        juros_mora_mensal_percent=juros_mora_percent,
                     )
 
                     Parcela.objects.bulk_create([
@@ -88,6 +372,23 @@ def novo_emprestimo_form(request, cliente_id: int):
                         )
                         for p in parcelas
                     ])
+                    
+                    # LOG DE CRIAÇÃO
+                    ContratoLog.objects.create(
+                        contrato=emprestimo,
+                        acao=ContratoLog.Acao.CRIADO,
+                        usuario=request.user if request.user.is_authenticated else None,
+                        motivo="Cadastro inicial"
+                    )
+
+                    # --- [NOVO] REGISTRO NO FINANCEIRO (SAÍDA DE CAIXA) ---
+                    Transacao.objects.create(
+                        tipo='EMPRESTIMO_SAIDA',
+                        valor=-valor_solicitado, # Valor negativo (saída)
+                        descricao=f"Empréstimo {emprestimo.codigo_contrato} - {cliente.nome_completo}",
+                        emprestimo=emprestimo
+                    )
+                    # ------------------------------------------------------
 
                 messages.success(request, f"Empréstimo cadastrado com sucesso! Contrato: {codigo}")
                 return redirect("emprestimos:contrato_detalhe", emprestimo_id=emprestimo.id)
@@ -111,32 +412,12 @@ def novo_emprestimo_form(request, cliente_id: int):
     else:
         form = NovoEmprestimoForm(initial={"cliente_id": cliente.id})
 
-
-
-
-    emp = Emprestimo.objects.create(
-    cliente=cliente,
-    codigo_contrato=gerar_codigo_contrato(),
-    valor_emprestado=valor,
-    qtd_parcelas=qtd,
-    taxa_juros_mensal=taxa,
-    primeiro_vencimento=venc,
-
-    valor_parcela_aplicada=parcela_aplicada,
-    total_contrato=total_contrato,
-    total_juros=(total_contrato - valor),
-    ajuste_arredondamento=ajuste,
-
-    status=EmprestimoStatus.ATIVO,
-
-    # Regras de atraso
-    tem_multa_atraso=tem_multa,
-    multa_atraso_percent=multa_percent,
-    juros_mora_mensal_percent=juros_mora_percent,
-    )
-
     return render(request, "emprestimos/novo_form.html", {"cliente": cliente, "form": form})
 
+
+# =============================================================================
+#  VIEWS DE LISTAGEM E DETALHES
+# =============================================================================
 
 def contratos(request):
     qs = Emprestimo.objects.select_related("cliente").all()
@@ -155,22 +436,183 @@ def contrato_detalhe(request, emprestimo_id: int):
 
 
 def a_vencer(request):
+    """
+    Lista parcelas com status 'ABERTA' e vencimento >= hoje (ou futuro).
+    Com filtros de busca, data e ordenação.
+    """
     hoje = timezone.localdate()
-    parcelas = (
-        Parcela.objects.select_related("emprestimo", "emprestimo__cliente")
-        .filter(status=ParcelaStatus.ABERTA, vencimento__gte=hoje)
-        .order_by("vencimento")
+    
+    queryset = Parcela.objects.select_related('emprestimo', 'emprestimo__cliente').filter(
+        status=ParcelaStatus.ABERTA,
+        vencimento__gte=hoje
     )
-    return render(request, "emprestimos/a_vencer.html", {"parcelas": parcelas})
+
+    # --- FILTROS ---
+    q = request.GET.get('q')
+    if q:
+        queryset = queryset.filter(
+            Q(emprestimo__cliente__nome_completo__icontains=q) |
+            Q(emprestimo__codigo_contrato__icontains=q)
+        )
+
+    data_inicio = request.GET.get('data_inicio')
+    data_fim = request.GET.get('data_fim')
+    
+    if data_inicio:
+        queryset = queryset.filter(vencimento__gte=data_inicio)
+    if data_fim:
+        queryset = queryset.filter(vencimento__lte=data_fim)
+
+    # --- ORDENAÇÃO ---
+    ordenacao = request.GET.get('ordenacao')
+    
+    if ordenacao == 'maior_valor':
+        queryset = queryset.order_by('-valor')
+    elif ordenacao == 'menor_valor':
+        queryset = queryset.order_by('valor')
+    elif ordenacao == 'cliente_az':
+        queryset = queryset.order_by('emprestimo__cliente__nome_completo')
+    elif ordenacao == 'contrato':
+        queryset = queryset.order_by('emprestimo__codigo_contrato')
+    elif ordenacao == 'vencimento_longe':
+        queryset = queryset.order_by('-vencimento')
+    else:
+        # Padrão: Vencimento mais próximo primeiro
+        queryset = queryset.order_by('vencimento')
+
+    context = {
+        "parcelas": queryset,
+        "hoje": hoje,
+        "titulo_pagina": "Parcelas a Vencer",
+    }
+    return render(request, "emprestimos/a_vencer.html", context)
+
+
+def vencidos(request):
+    """
+    Lista parcelas com status 'ABERTA' e vencimento < hoje.
+    """
+    hoje = timezone.localdate()
+    
+    queryset = Parcela.objects.select_related('emprestimo', 'emprestimo__cliente').filter(
+        status=ParcelaStatus.ABERTA,
+        vencimento__lt=hoje
+    )
+
+    # --- FILTROS ---
+    q = request.GET.get('q')
+    if q:
+        queryset = queryset.filter(
+            Q(emprestimo__cliente__nome_completo__icontains=q) |
+            Q(emprestimo__codigo_contrato__icontains=q)
+        )
+
+    data_inicio = request.GET.get('data_inicio')
+    data_fim = request.GET.get('data_fim')
+    if data_inicio:
+        queryset = queryset.filter(vencimento__gte=data_inicio)
+    if data_fim:
+        queryset = queryset.filter(vencimento__lte=data_fim)
+
+    # --- ORDENAÇÃO ---
+    ordenacao = request.GET.get('ordenacao')
+    if ordenacao == 'maior_valor':
+        queryset = queryset.order_by('-valor')
+    elif ordenacao == 'menor_valor':
+        queryset = queryset.order_by('valor')
+    elif ordenacao == 'cliente_az':
+        queryset = queryset.order_by('emprestimo__cliente__nome_completo')
+    else:
+        queryset = queryset.order_by('vencimento')
+
+    context = {
+        "parcelas": queryset,
+        "hoje": hoje,
+        "titulo_pagina": "Parcelas Vencidas",
+        "is_vencidos": True 
+    }
+    return render(request, "emprestimos/vencidos.html", context)
+
+
+# =============================================================================
+#  AÇÕES: RENEGOCIAR, CANCELAR E PAGAR
+# =============================================================================
+
+
+@require_POST # Garante que só aceita POST (evita erro se alguém tentar acessar via URL direta)
+@transaction.atomic # Garante que ou salva tudo (pagamento + log + financeiro) ou nada
+def pagar_parcela(request, parcela_id: int):
+    p = get_object_or_404(
+        Parcela.objects.select_related("emprestimo", "emprestimo__cliente"),
+        id=parcela_id
+    )
+    contrato = p.emprestimo
+
+    # --- TRAVA 1: SENHA DE CONFIRMAÇÃO ---
+    senha = request.POST.get("senha", "").strip()
+    SENHA_PAGAMENTO = "1234" # Idealmente, mova para settings.py
+    
+    if senha != SENHA_PAGAMENTO:
+        messages.error(request, "Senha de pagamento incorreta.")
+        return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+
+    # --- TRAVA 2: PAGAMENTO SEQUENCIAL ---
+    parcela_anterior_pendente = contrato.parcelas.filter(
+        status=ParcelaStatus.ABERTA,
+        numero__lt=p.numero
+    ).order_by('numero').first()
+
+    if parcela_anterior_pendente:
+        messages.error(
+            request, 
+            f"Bloqueado! A parcela {parcela_anterior_pendente.numero} (Venc: {parcela_anterior_pendente.vencimento.strftime('%d/%m/%Y')}) está em aberto. Pague na ordem sequencial."
+        )
+        return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+
+    # --- VALIDAÇÕES DE STATUS ---
+    if contrato.status == EmprestimoStatus.CANCELADO:
+        messages.error(request, "Contrato CANCELADO. Operação não permitida.")
+        return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+
+    if p.status != ParcelaStatus.ABERTA:
+        messages.warning(request, f"A parcela {p.numero} já consta como paga.")
+        return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+    
+    # --- EFETUAR PAGAMENTO ---
+    
+    # 1. Atualiza a Parcela (Model)
+    p.marcar_como_paga()
+
+    # 2. Registra Log
+    ContratoLog.objects.create(
+        contrato=contrato,
+        acao=ContratoLog.Acao.PAGO,
+        usuario=request.user if request.user.is_authenticated else None,
+        motivo=f"Parcela {p.numero} paga manualmente",
+    )
+
+    # 3. Registra no Financeiro (Entrada de Caixa)
+    Transacao.objects.create(
+        tipo='PAGAMENTO_ENTRADA',
+        valor=p.valor, # Positivo
+        descricao=f"Recebimento Parc. {p.numero}/{contrato.qtd_parcelas} - {contrato.cliente.nome_completo}",
+        emprestimo=contrato
+    )
+
+    messages.success(request, f"Parcela {p.numero} paga com sucesso!")
+    return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
 
 @transaction.atomic
 def renegociar(request, emprestimo_id):
+    print(f"--- INICIANDO RENEGOCIAÇÃO DO CONTRATO ID {emprestimo_id} ---") # DEBUG
+    
     contrato = get_object_or_404(Emprestimo, id=emprestimo_id)
 
     if request.method != "POST":
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
+    # 1. Obter dados
     entrada = Decimal(request.POST.get("entrada") or "0.00")
     usar_taxa_antiga = request.POST.get("usar_taxa_antiga") == "1"
     nova_taxa = Decimal(request.POST.get("nova_taxa") or contrato.taxa_juros_mensal)
@@ -179,43 +621,82 @@ def renegociar(request, emprestimo_id):
 
     taxa = contrato.taxa_juros_mensal if usar_taxa_antiga else nova_taxa
 
-    saldo = contrato.parcelas.filter(
+    # 2. Calcular Saldo para Quitação
+    saldo_total_antigo = contrato.parcelas.filter(
         status=ParcelaStatus.ABERTA
     ).aggregate(
         total=models.Sum("valor")
     )["total"] or Decimal("0.00")
 
-    saldo -= entrada
-    if saldo <= 0:
-        messages.error(request, "Saldo inválido para renegociação.")
+    # 3. Calcular valor a ser financiado
+    valor_novo_emprestimo = saldo_total_antigo - entrada
+    
+    print(f"Saldo Antigo: {saldo_total_antigo} | Entrada: {entrada} | Novo Financiamento: {valor_novo_emprestimo}") # DEBUG
+
+    if valor_novo_emprestimo <= 0:
+        messages.error(request, "A entrada cobre todo o saldo. Use a quitação antecipada.")
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
-    # Liquida parcelas antigas
+    # --- MOVIMENTAÇÕES FINANCEIRAS ---
+    # Aqui garantimos que o saldo do caixa bata exatamente (Net = +Entrada)
+    
+    # A) Entrada (Dinheiro Real)
+    if entrada > 0:
+        Transacao.objects.create(
+            tipo='DEPOSITO',
+            valor=entrada,
+            descricao=f"Entrada Renegociação {contrato.codigo_contrato}",
+            emprestimo=contrato
+        )
+        print(">>> Transação de Entrada criada") # DEBUG
+
+    # B) Quitação do Antigo (Dinheiro Virtual Entrando para zerar o velho)
+    # Isso corresponde ao valor que está sendo refinanciado
+    Transacao.objects.create(
+        tipo='PAGAMENTO_ENTRADA',
+        valor=valor_novo_emprestimo,
+        descricao=f"Liq. Contrato {contrato.codigo_contrato} (Refinanciamento)",
+        emprestimo=contrato
+    )
+    print(">>> Transação de Liquidação criada") # DEBUG
+
+    # C) Saída do Novo (Dinheiro Virtual Saindo para criar o novo)
+    # Criamos a transação e guardamos na variável para vincular ao novo contrato depois
+    transacao_saida = Transacao.objects.create(
+        tipo='EMPRESTIMO_SAIDA',
+        valor=-valor_novo_emprestimo, # Negativo
+        descricao=f"Renegociação {contrato.codigo_contrato} (Gerando Novo)",
+        emprestimo=None 
+    )
+    print(">>> Transação de Saída criada") # DEBUG
+
+    # ------------------------------
+
+    # 4. Baixar contrato antigo
     contrato.parcelas.filter(status=ParcelaStatus.ABERTA).update(
         status=ParcelaStatus.LIQUIDADA_RENEGOCIACAO
     )
-
     contrato.status = EmprestimoStatus.RENEGOCIADO
     contrato.save()
 
-    # Criar novo contrato (aditivo)
-    codigo = gerar_codigo_contrato()
-
+    # 5. Criar novo contrato
+    codigo_novo = gerar_codigo_contrato()
     parcela_bruta, parcela_aplicada, total, ajuste, parcelas = simular(
-        saldo, qtd_parcelas, taxa, novo_vencimento
+        valor_novo_emprestimo, qtd_parcelas, taxa, novo_vencimento
     )
 
     novo = Emprestimo.objects.create(
         cliente=contrato.cliente,
         contrato_origem=contrato,
-        codigo_contrato=codigo,
-        valor_emprestado=saldo,
+        codigo_contrato=codigo_novo,
+        valor_emprestado=valor_novo_emprestimo,
         qtd_parcelas=qtd_parcelas,
         taxa_juros_mensal=taxa,
         primeiro_vencimento=novo_vencimento,
         valor_parcela_aplicada=parcela_aplicada,
         total_contrato=total,
         ajuste_arredondamento=ajuste,
+        status=EmprestimoStatus.ATIVO
     )
 
     Parcela.objects.bulk_create([
@@ -228,53 +709,21 @@ def renegociar(request, emprestimo_id):
         for p in parcelas
     ])
 
-    messages.success(request, f"Contrato renegociado. Novo contrato: {codigo}")
+    # 6. Atualizar a transação de saída com o novo contrato
+    transacao_saida.emprestimo = novo
+    transacao_saida.descricao = f"Renegociação {contrato.codigo_contrato} (Gerou {novo.codigo_contrato})"
+    transacao_saida.save()
+
+    # Logs
+    ContratoLog.objects.create(contrato=contrato, acao=ContratoLog.Acao.RENEGOCIADO, usuario=request.user if request.user.is_authenticated else None, motivo=f"Gerou {novo.codigo_contrato}")
+    ContratoLog.objects.create(contrato=novo, acao=ContratoLog.Acao.CRIADO, usuario=request.user if request.user.is_authenticated else None, motivo=f"Origem: {contrato.codigo_contrato}")
+
+    print("--- RENEGOCIAÇÃO CONCLUÍDA COM SUCESSO ---") # DEBUG
+    messages.success(request, f"Renegociação concluída! Novo contrato: {codigo_novo}")
     return redirect("emprestimos:contrato_detalhe", emprestimo_id=novo.id)
 
 
 
-def vencidos(request):
-    hoje = timezone.localdate()
-    parcelas = (
-        Parcela.objects.select_related("emprestimo", "emprestimo__cliente")
-        .filter(status=ParcelaStatus.ABERTA, vencimento__lt=hoje)
-        .order_by("vencimento")
-    )
-    return render(request, "emprestimos/vencidos.html", {"parcelas": parcelas, "hoje": hoje})
-
-
-@require_http_methods(["GET", "POST"])
-def pagar_parcela(request, parcela_id: int):
-    p = get_object_or_404(
-        Parcela.objects.select_related("emprestimo", "emprestimo__cliente"),
-        id=parcela_id
-    )
-    contrato = p.emprestimo
-
-    # 1) Bloqueios de consistência / segurança
-    if contrato.status == EmprestimoStatus.CANCELADO:
-        messages.error(request, "Este contrato está CANCELADO. Não é possível registrar pagamento.")
-        return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
-
-    if p.status != ParcelaStatus.ABERTA:
-        messages.error(request, f"Esta parcela não está aberta (status atual: {p.status}).")
-        return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
-    
-
-    # ✅ REGISTRA O LOG DO PAGAMENTO
-    ContratoLog.objects.create(
-        contrato=contrato,
-        acao=ContratoLog.Acao.PAGO,
-        usuario=request.user if request.user.is_authenticated else None,
-        motivo=f"Parcela {p.numero} paga",
-    )
-
-    # 2) Se você já tem um formulário de pagamento, aqui você trataria POST
-    #    Como seu fluxo atual parece ser “clicar e pagar”, vamos marcar direto.
-    p.marcar_como_paga()
-
-    messages.success(request, f"Parcela {p.numero} paga com sucesso.")
-    return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
 @transaction.atomic
 def cancelar_contrato(request, emprestimo_id: int):
@@ -307,7 +756,7 @@ def cancelar_contrato(request, emprestimo_id: int):
     contrato.motivo_cancelamento = motivo or None
     contrato.observacao_cancelamento = observacao or None
 
-    # Também salva no observacoes (pra ficar visível e fácil)
+    # Também salva no observacoes
     bloco = f"[CANCELADO] Motivo: {motivo}"
     if observacao:
         bloco += f" | Obs: {observacao}"
@@ -328,6 +777,7 @@ def cancelar_contrato(request, emprestimo_id: int):
     messages.success(request, "Contrato cancelado com sucesso.")
     return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
+
 @transaction.atomic
 def reabrir_contrato(request, emprestimo_id: int):
     contrato = get_object_or_404(Emprestimo, id=emprestimo_id)
@@ -346,7 +796,7 @@ def reabrir_contrato(request, emprestimo_id: int):
         messages.error(request, "Este contrato não está cancelado.")
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
-    # Reabre parcelas canceladas (somente as canceladas)
+    # Reabre parcelas canceladas
     contrato.parcelas.filter(status=ParcelaStatus.CANCELADA).update(status=ParcelaStatus.ABERTA)
 
     contrato.status = EmprestimoStatus.ATIVO
@@ -364,4 +814,49 @@ def reabrir_contrato(request, emprestimo_id: int):
     )
 
     messages.success(request, "Contrato reaberto com sucesso.")
+    return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+
+
+@transaction.atomic
+def pagar_parcial(request, parcela_id: int):
+    parcela = get_object_or_404(Parcela, id=parcela_id)
+    contrato = parcela.emprestimo
+
+    if request.method == "POST":
+        valor_juros_pago = Decimal(request.POST.get('valor_pago').replace(',', '.'))
+        nova_data_vencimento = request.POST.get('nova_data') # String YYYY-MM-DD
+        
+        # Validação da Data (Regra Crítica)
+        proxima_parcela = contrato.parcelas.filter(
+            numero=parcela.numero + 1
+        ).first()
+
+        if proxima_parcela:
+            if nova_data_vencimento >= str(proxima_parcela.vencimento):
+                messages.error(request, "Erro: A nova data deve ser ANTERIOR ao vencimento da próxima parcela.")
+                return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+        
+        # 1. Registra o dinheiro entrando no caixa (apenas os juros)
+        Transacao.objects.create(
+            tipo='PAGAMENTO_ENTRADA',
+            valor=valor_juros_pago,
+            descricao=f"Pagamento Parcial (Juros) Parc. {parcela.numero} - {contrato.codigo_contrato}",
+            emprestimo=contrato
+        )
+
+        # 2. Atualiza a parcela atual (mantém status ABERTA, só muda a data)
+        data_antiga = parcela.vencimento
+        parcela.vencimento = nova_data_vencimento
+        parcela.save()
+
+        # 3. Log
+        ContratoLog.objects.create(
+            contrato=contrato,
+            acao='RENEGOCIADO', # ou um novo tipo 'PAGAMENTO_PARCIAL'
+            motivo=f"Pagamento parcial de R$ {valor_juros_pago}. Vencimento alterado de {data_antiga} para {nova_data_vencimento}"
+        )
+
+        messages.success(request, "Pagamento parcial registrado e vencimento prorrogado.")
+        return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+
     return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)

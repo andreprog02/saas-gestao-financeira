@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     # seus apps
     "core",
     "clientes",
+    "financeiro",
     "emprestimos",
 ]
 
@@ -100,4 +101,5 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CONTRATO_DELETE_PASSWORD = "1234"
+MANAGER_PASSWORD = "1234"  # Defina sua senha aqui
 

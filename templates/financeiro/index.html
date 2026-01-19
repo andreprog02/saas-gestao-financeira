@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="container-fluid">
+    
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-6">
+            <h2 class="text-primary fw-bold">Fluxo de Caixa</h2>
+            <p class="text-muted">Gerencie as entradas e saídas da empresa</p>
+        </div>
+        <div class="col-md-6 text-end">
+            <div class="card bg-success text-white d-inline-block p-3 shadow-sm" style="min_width: 250px;">
+                <h6 class="mb-1">Saldo Atual em Caixa</h6>
+                <h2 class="mb-0 fw-bold">R$ {{ saldo|intcomma }}</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <button class="btn btn-primary btn-lg me-2" data-bs-toggle="modal" data-bs-target="#modalAporte">
+                <i class="bi bi-arrow-up-circle"></i> Novo Aporte / Entrada
+            </button>
+            <button class="btn btn-danger btn-lg" data-bs-toggle="modal" data-bs-target="#modalSangria">
+                <i class="bi bi-arrow-down-circle"></i> Nova Sangria / Retirada
+            </button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 card-title">Extrato de Movimentações (Mês Atual)</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Data/Hora</th>
+                            <th>Tipo</th>
+                            <th>Descrição</th>
+                            <th>Valor</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in transacoes %}
+                        <tr>
+                            <td>
+                                <div>{{ t.data|date:"d/m/Y" }}</div>
+                                <small class="text-muted">{{ t.data|date:"H:i" }}</small>
+                            </td>
+                            <td>
+                                {% if t.tipo == 'DEPOSITO' %}
+                                    <span class="badge bg-success">Depósito</span>
+                                {% elif t.tipo == 'SAQUE' %}
+                                    <span class="badge bg-danger">Saque</span>
+                                {% elif t.tipo == 'EMPRESTIMO_SAIDA' %}
+                                    <span class="badge bg-warning text-dark">Empréstimo (Saída)</span>
+                                {% elif t.tipo == 'PAGAMENTO_ENTRADA' %}
+                                    <span class="badge bg-info text-dark">Recebimento Parc.</span>
+                                {% elif t.tipo == 'ESTORNO' %}
+                                    <span class="badge bg-secondary">Estorno</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ t.get_tipo_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ t.descricao }}
+                                {% if t.emprestimo %}
+                                    <br>
+                                    <a href="{% url 'emprestimos:contrato_detalhe' t.emprestimo.id %}" class="small text-decoration-none">
+                                        Ver Contrato
+                                    </a>
+                                {% endif %}
+                            </td>
+                            <td class="fw-bold {% if t.valor < 0 %}text-danger{% else %}text-success{% endif %}">
+                                R$ {{ t.valor|intcomma }}
+                            </td>
+                            <td>
+                                {% if t.tipo != 'ESTORNO' %}
+                                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEstorno{{ t.id }}">
+                                        Estornar
+                                    </button>
+                                
+                                    <div class="modal fade" id="modalEstorno{{ t.id }}" tabindex="-1" aria-hidden="true">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <form action="{% url 'financeiro:estornar' t.id %}" method="POST">
+                                                    {% csrf_token %}
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Confirmar Estorno</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <p>Tem certeza que deseja estornar esta transação?</p>
+                                                        <div class="alert alert-warning">
+                                                            <strong>{{ t.descricao }}</strong><br>
+                                                            Valor: R$ {{ t.valor }}
+                                                        </div>
+                                                        <label class="form-label">Senha de Gerente:</label>
+                                                        <input type="password" name="senha" class="form-control" required placeholder="Digite a senha administrativa">
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                                        <button type="submit" class="btn btn-danger">Confirmar Estorno</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center py-5 text-muted">
+                                Nenhuma movimentação registrada neste mês.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalAporte" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="tipo" value="DEPOSITO">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">Novo Aporte / Entrada de Caixa</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Valor (R$)</label>
+                        <input type="number" step="0.01" name="valor" class="form-control form-control-lg" required placeholder="0,00">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descrição / Motivo</label>
+                        <input type="text" name="descricao" class="form-control" required placeholder="Ex: Aporte dos sócios">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">Confirmar Entrada</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalSangria" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="tipo" value="SAQUE">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Nova Sangria / Retirada</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> O valor será <strong>subtraído</strong> do caixa.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Valor (R$)</label>
+                        <input type="number" step="0.01" name="valor" class="form-control form-control-lg" required placeholder="0,00">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descrição / Motivo</label>
+                        <input type="text" name="descricao" class="form-control" required placeholder="Ex: Pagamento de conta de luz">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger">Confirmar Saída</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

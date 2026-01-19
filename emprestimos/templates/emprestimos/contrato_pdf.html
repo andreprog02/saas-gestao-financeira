@@ -1,0 +1,128 @@
+{% load humanize l10n %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Contrato {{ contrato.codigo_contrato }}</title>
+    <style>
+        @page { size: A4; margin: 2cm; }
+        body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; color: #000; }
+        h1 { text-align: center; font-size: 16pt; margin-bottom: 20px; text-transform: uppercase; }
+        h2 { font-size: 14pt; margin-top: 20px; margin-bottom: 10px; border-bottom: 1px solid #000; }
+        p { margin-bottom: 10px; text-align: justify; }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .table-parcelas { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10pt; }
+        .table-parcelas th, .table-parcelas td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+        .page-break { page-break-before: always; }
+        
+        /* Estilos da Nota Promissória */
+        .promissoria { border: 2px solid #000; padding: 20px; margin-top: 50px; }
+        .promissoria-titulo { font-size: 18pt; font-weight: bold; text-align: center; margin-bottom: 20px; }
+        .promissoria-valor { float: right; font-size: 14pt; border: 1px solid #000; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>CONTRATO DE MÚTUO FINANCEIRO Nº {{ contrato.codigo_contrato }}</h1>
+
+    <p>
+        <strong>MUTUANTE:</strong> {{ empresa_nome }}, inscrita no CNPJ sob nº {{ empresa_cnpj }}.<br>
+        <strong>MUTUÁRIO:</strong> {{ cliente.nome_completo }}, CPF nº {{ cliente.cpf }}, RG nº {{ cliente.doc }}, residente em {{ cliente.logradouro }}, {{ cliente.numero }} - {{ cliente.bairro }}, {{ cliente.cidade }}/{{ cliente.uf }}.
+    </p>
+
+    <h2>1. DO OBJETO</h2>
+    <p>
+        O presente contrato tem por objeto o empréstimo da quantia de 
+        <strong>R$ {{ contrato.valor_emprestado|floatformat:2|localize }} ({{ valor_emprestado_extenso }})</strong>,
+        que o MUTUÁRIO declara ter recebido nesta data.
+    </p>
+
+    <h2>2. DO PAGAMENTO</h2>
+    <p>
+        O MUTUÁRIO se compromete a restituir a quantia total de 
+        <strong>R$ {{ contrato.total_contrato|floatformat:2|localize }} ({{ total_contrato_extenso }})</strong>,
+        dividida em <strong>{{ contrato.qtd_parcelas }}</strong> parcelas mensais de 
+        <strong>R$ {{ contrato.valor_parcela_aplicada|floatformat:2|localize }} ({{ valor_parcela_extenso }})</strong>.
+    </p>
+
+    <h2>3. DOS ENCARGOS E MORA</h2>
+    <p>
+        Sobre o valor emprestado incidem juros remuneratórios de {{ contrato.taxa_juros_mensal }}% ao mês.
+    </p>
+    {% if contrato.tem_multa_atraso %}
+    <p>
+        <strong>Parágrafo Único:</strong> Em caso de atraso no pagamento de qualquer parcela, incidirá multa de 
+        <strong>{{ contrato.multa_atraso_percent }}%</strong> sobre o valor do débito e juros de mora de 
+        <strong>{{ contrato.juros_mora_mensal_percent }}%</strong> ao mês, calculados pro rata die.
+    </p>
+    {% else %}
+    <p>Não há incidência de multa por atraso contratada.</p>
+    {% endif %}
+
+    <h2>4. RESUMO DAS PARCELAS</h2>
+    <table class="table-parcelas">
+        <thead>
+            <tr>
+                <th>Nº</th>
+                <th>Vencimento</th>
+                <th>Valor</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in parcelas %}
+            <tr>
+                <td>{{ p.numero }}</td>
+                <td>{{ p.vencimento|date:"d/m/Y" }}</td>
+                <td>R$ {{ p.valor|floatformat:2|localize }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <br><br>
+    <p class="center">{{ cidade_data }}</p>
+
+    <br><br><br>
+    <div style="display: flex; justify-content: space-between;">
+        <div style="width: 45%; border-top: 1px solid #000; text-align: center;">
+            {{ empresa_nome }}<br>Mutuante
+        </div>
+        <div style="width: 45%; border-top: 1px solid #000; text-align: center;">
+            {{ cliente.nome_completo }}<br>Mutuário
+        </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <div class="promissoria">
+        <div class="promissoria-valor">R$ {{ contrato.total_contrato|floatformat:2|localize }}</div>
+        <div class="promissoria-titulo">NOTA PROMISSÓRIA</div>
+        
+        <p>Vencimento da última parcela: <strong>{{ parcelas.last.vencimento|date:"d/m/Y" }}</strong></p>
+        
+        <p>
+            Ao(s) <strong>{{ parcelas.last.vencimento|date:"d" }} dia(s) do mês de {{ parcelas.last.vencimento|date:"F" }} de {{ parcelas.last.vencimento|date:"Y" }}</strong>, 
+            pagarei(emos) por esta única via de NOTA PROMISSÓRIA a 
+            <strong>{{ empresa_nome }}</strong>, CNPJ {{ empresa_cnpj }}, ou à sua ordem, a quantia de:
+        </p>
+
+        <p class="center bold" style="text-transform: uppercase; margin: 20px 0;">
+            *** {{ total_contrato_extenso }} ***
+        </p>
+
+        <p>Em moeda corrente deste país.</p>
+
+        <br>
+        <p><strong>Emitente:</strong> {{ cliente.nome_completo }}</p>
+        <p><strong>CPF:</strong> {{ cliente.cpf }}</p>
+        <p><strong>Endereço:</strong> {{ cliente.logradouro }}, {{ cliente.numero }} - {{ cliente.bairro }}, {{ cliente.cidade }}/{{ cliente.uf }}</p>
+
+        <br><br><br>
+        <div style="width: 60%; margin: 0 auto; border-top: 1px solid #000; text-align: center;">
+            Assinatura do Emitente
+        </div>
+    </div>
+
+</body>
+</html>
