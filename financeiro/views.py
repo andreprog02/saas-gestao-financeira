@@ -48,7 +48,8 @@ def estornar(request, transacao_id):
             Transacao.objects.create(
                 tipo='ESTORNO',
                 valor= -original.valor, # Inverte o sinal
-                descricao=f"Estorno da transação #{original.id}"
+                descricao=f"Estorno da transação #{original.id}",
+                transacao_original=original  # NOVO: Vincula ao ID da original para autenticação
             )
             messages.success(request, "Estorno realizado.")
         else:

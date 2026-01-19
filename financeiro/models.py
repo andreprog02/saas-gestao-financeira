@@ -16,6 +16,16 @@ class Transacao(models.Model):
     descricao = models.CharField(max_length=255)
     data = models.DateTimeField(default=timezone.now)
     
+    # NOVO CAMPO: Para vincular estornos à transação original (ID de autenticação/vinculação)
+    transacao_original = models.ForeignKey(
+        'self', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='estornos',
+        verbose_name='Transação Original (ID Autenticação)'
+    )
+    
     # Opcional: Linkar com um empréstimo se for um pagamento ou saída
     # Usamos string 'emprestimos.Emprestimo' para evitar import circular
     emprestimo = models.ForeignKey(
