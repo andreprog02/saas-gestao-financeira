@@ -611,42 +611,50 @@ def renegociar(request, emprestimo_id):
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
     try:
-        # 1. TRATAMENTO DE DADOS (CORREÇÃO DA VÍRGULA E PONTO)
-        entrada_str = request.POST.get("entrada", "0.00").replace(',', '.')
-        # Se vier vazio ou inválido, assume 0.00
-        entrada = Decimal(entrada_str) if entrada_str.strip() else Decimal("0.00")
-
-        usar_taxa_antiga = request.POST.get("usar_taxa_antiga") == "1"
+        # 1. TRATAMENTO ROBUSTO DE DADOS (Remove Ponto de Milhar e Ajusta Vírgula)
+        # Ex: "1.200,50" -> Remove ponto ("1200,50") -> Troca vírgula ("1200.50")
         
-        # Tratamento da nova taxa também
-        nova_taxa_str = request.POST.get("nova_taxa", "").replace(',', '.')
-        if nova_taxa_str.strip():
-            nova_taxa = Decimal(nova_taxa_str)
+        raw_entrada = request.POST.get("entrada", "")
+        if raw_entrada:
+            # Primeiro remove os pontos de milhar, depois troca a vírgula decimal
+            entrada_clean = raw_entrada.replace('.', '').replace(',', '.')
+            entrada = Decimal(entrada_clean)
+        else:
+            entrada = Decimal("0.00")
+
+        # Tratamento da Taxa
+        usar_taxa_antiga = request.POST.get("usar_taxa_antiga") == "1"
+        raw_nova_taxa = request.POST.get("nova_taxa", "")
+        
+        if raw_nova_taxa and not usar_taxa_antiga:
+            taxa_clean = raw_nova_taxa.replace('.', '').replace(',', '.')
+            nova_taxa = Decimal(taxa_clean)
         else:
             nova_taxa = contrato.taxa_juros_mensal
         
+        # Outros campos
         qtd_parcelas = int(request.POST["qtd_parcelas"])
         novo_vencimento = request.POST["novo_vencimento"]
 
         taxa = contrato.taxa_juros_mensal if usar_taxa_antiga else nova_taxa
 
-        # 2. Calcular Saldo Devedor Total (o que ele deve HOJE)
+        # 2. Calcular Saldo Devedor Total
         saldo_total_antigo = contrato.parcelas.filter(
             status=ParcelaStatus.ABERTA
         ).aggregate(
             total=models.Sum("valor")
         )["total"] or Decimal("0.00")
 
-        # 3. Calcular valor a ser financiado (Saldo - Entrada)
+        # 3. Calcular valor a ser financiado
         valor_novo_emprestimo = saldo_total_antigo - entrada
 
         if valor_novo_emprestimo <= 0:
             messages.error(request, "A entrada cobre todo o saldo. Use a quitação antecipada.")
             return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
-        # --- MOVIMENTAÇÕES NO CAIXA (Lógica de 3 etapas) ---
+        # --- MOVIMENTAÇÕES NO CAIXA ---
 
-        # A) Entrada do Dinheiro Real (Sinal) - AUMENTA SALDO
+        # A) Entrada (Dinheiro Real)
         if entrada > 0:
             Transacao.objects.create(
                 tipo='DEPOSITO',
@@ -655,8 +663,7 @@ def renegociar(request, emprestimo_id):
                 emprestimo=contrato
             )
 
-        # B) Liquidação do Saldo Antigo (Dinheiro Virtual) - AUMENTA SALDO (Contábil)
-        # Registra que o saldo remanescente do contrato velho foi "pago"
+        # B) Liquidação do Saldo Antigo (Dinheiro Virtual)
         Transacao.objects.create(
             tipo='PAGAMENTO_ENTRADA',
             valor=valor_novo_emprestimo,
@@ -664,14 +671,12 @@ def renegociar(request, emprestimo_id):
             emprestimo=contrato
         )
 
-        # C) Saída do Novo Contrato (Dinheiro Virtual) - DIMINUI SALDO (Contábil)
-        # Registra que saiu dinheiro para financiar o novo contrato
-        # O resultado de (B - C) é zero, sobrando apenas a Entrada (A) no caixa real.
+        # C) Saída do Novo Contrato (Dinheiro Virtual)
         transacao_saida = Transacao.objects.create(
             tipo='EMPRESTIMO_SAIDA',
             valor=-valor_novo_emprestimo,
             descricao=f"Renegociação {contrato.codigo_contrato} (Novo Saldo)",
-            emprestimo=None # Vamos vincular abaixo
+            emprestimo=None 
         )
 
         # ------------------------------
@@ -713,7 +718,7 @@ def renegociar(request, emprestimo_id):
             for p in parcelas
         ])
 
-        # 6. Vincular a transação de saída ao novo contrato
+        # 6. Vincular a transação de saída
         transacao_saida.emprestimo = novo
         transacao_saida.descricao = f"Renegociação {contrato.codigo_contrato} (Gerou {novo.codigo_contrato})"
         transacao_saida.save()
@@ -736,7 +741,6 @@ def renegociar(request, emprestimo_id):
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=novo.id)
 
     except Exception as e:
-        # Se der erro, mostra na tela
         messages.error(request, f"Erro ao renegociar: {str(e)}")
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
