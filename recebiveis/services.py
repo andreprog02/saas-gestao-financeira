@@ -1,12 +1,14 @@
 from decimal import Decimal
+from django.utils import timezone
 from financeiro.models import LancamentoFinanceiro  # Assuma modelo em financeiro; ajuste se necessário
 
 def registrar_financeiro(contrato):
     """Registra liberação e recebíveis no livro caixa."""
     # Exemplo: Débito para liberação líquido
+    # CORRIGIDO: contrato.cliente.nome_completo em vez de contrato.cliente.nome
     LancamentoFinanceiro.objects.create(
         data=contrato.data_ativacao,
-        descricao=f'Liberação Adiantamento {contrato.contrato_id} - Cliente {contrato.cliente.nome}',
+        descricao=f'Liberação Adiantamento {contrato.contrato_id} - Cliente {contrato.cliente.nome_completo}',
         debito=contrato.valor_liquido,
         credito=Decimal('0.00')
     )

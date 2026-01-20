@@ -82,7 +82,7 @@ def ativar_contrato(request, contrato_id):
     if request.method == 'POST':
         form = AtivacaoForm(request.POST)
         if form.is_valid():
-            if form.cleaned_data['senha'] == 'senha123':  # Altere para produção
+            if form.cleaned_data['senha'] == '1234':  # Altere para produção
                 contrato.status = 'ativo'
                 contrato.data_ativacao = timezone.now()
                 contrato.save()
