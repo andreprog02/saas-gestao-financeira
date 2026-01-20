@@ -62,10 +62,26 @@ class ItemRecebivel(models.Model):
         verbose_name_plural = 'Itens de Recebíveis'
 
 class ItemRecebivel(models.Model):
-    # Adicione seus campos, ex.:
-    nome = models.CharField(max_length=100)
-    valor = models.DecimalField(max_digits=10, decimal_places=2)
-    # Outros campos...
+    TIPO_CHOICES = (
+        ('cheque', 'Cheque'),
+        ('nota_fiscal', 'Nota Fiscal'),
+        ('cartao', 'Cartão'),
+    )
+
+    contrato = models.ForeignKey(ContratoRecebivel, related_name='itens', on_delete=models.CASCADE)
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    numero = models.CharField(max_length=50)
+    vencimento = models.DateField()
+    valor = models.DecimalField(max_digits=15, decimal_places=2)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.contrato.calcular_valores()
+
+    class Meta:
+        app_label = 'recebiveis'
+        verbose_name = 'Item de Recebível'
+        verbose_name_plural = 'Itens de Recebíveis'
 
     def __str__(self):
-        return self.nome
+        return f"{self.get_tipo_display()} {self.numero} - R$ {self.valor}"

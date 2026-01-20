@@ -11,7 +11,7 @@
             <p><strong>Status:</strong> {{ contrato.get_status_display }}</p>
             <p><strong>Taxa de Desconto:</strong> {{ contrato.taxa_desconto|floatformat:2 }}%</p>
             <p><strong>Valor Bruto:</strong> R$ {{ contrato.valor_bruto|floatformat:2 }}</p>
-            <p><strong>Desconto:</strong> R$ {{ contrato.valor_bruto|mul:contrato.taxa_desconto|floatformat:2 }}</p>
+            <p><strong>Desconto:</strong> R$ {{ valor_do_desconto|floatformat:2 }}</p>
             <p><strong>Valor Líquido:</strong> R$ {{ contrato.valor_liquido|floatformat:2 }}</p>
             <p><strong>Data de Criação:</strong> {{ contrato.data_criacao|date:"d/m/Y" }}</p>
         </div>
