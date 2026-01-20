@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+
+{% block title %}Criar Contrato de Recebíveis{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Criar Novo Contrato de Adiantamento de Recebíveis</h2>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}  <!-- Renderiza o formulário com campos como cliente e taxa_desconto -->
+        <button type="submit" class="btn btn-primary">Salvar e Adicionar Recebíveis</button>
+    </form>
+    <a href="{% url 'lista_contratos' %}" class="btn btn-secondary mt-3">Voltar à Lista</a>
+</div>
+{% endblock %}

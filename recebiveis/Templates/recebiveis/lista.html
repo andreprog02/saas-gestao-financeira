@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block title %}Lista de Contratos de Recebíveis{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Contratos de Adiantamento de Recebíveis</h2>
+    <a href="{% url 'criar_contrato' %}" class="btn btn-primary mb-3">Criar Novo Contrato</a>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Cliente</th>
+                <th>Status</th>
+                <th>Valor Bruto</th>
+                <th>Valor Líquido</th>
+                <th>Data Criação</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for contrato in contratos %}
+            <tr>
+                <td>{{ contrato.contrato_id|default:"Pendente" }}</td>
+                <td>{{ contrato.cliente.nome }}</td>
+                <td>{{ contrato.get_status_display }}</td>
+                <td>R$ {{ contrato.valor_bruto|floatformat:2 }}</td>
+                <td>R$ {{ contrato.valor_liquido|floatformat:2 }}</td>
+                <td>{{ contrato.data_criacao|date:"d/m/Y" }}</td>
+                <td>
+                    <a href="{% url 'simular_contrato' contrato.id %}" class="btn btn-info btn-sm">Simular</a>
+                    {% if contrato.status == 'simulado' %}
+                    <a href="{% url 'ativar_contrato' contrato.id %}" class="btn btn-success btn-sm">Ativar</a>
+                    {% endif %}
+                    {% if contrato.status == 'ativo' %}
+                    <a href="{% url 'renegociar_contrato' contrato.id %}" class="btn btn-warning btn-sm">Renegociar</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7">Nenhum contrato encontrado.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

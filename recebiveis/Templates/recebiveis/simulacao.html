@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}Simulação de Contrato {{ contrato.contrato_id|default:"Pendente" }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Simulação do Contrato</h2>
+    <div class="card mb-4">
+        <div class="card-body">
+            <p><strong>Cliente:</strong> {{ contrato.cliente.nome }}</p>
+            <p><strong>Status:</strong> {{ contrato.get_status_display }}</p>
+            <p><strong>Taxa de Desconto:</strong> {{ contrato.taxa_desconto|floatformat:2 }}%</p>
+            <p><strong>Valor Bruto:</strong> R$ {{ contrato.valor_bruto|floatformat:2 }}</p>
+            <p><strong>Desconto:</strong> R$ {{ contrato.valor_bruto|mul:contrato.taxa_desconto|floatformat:2 }}</p>
+            <p><strong>Valor Líquido:</strong> R$ {{ contrato.valor_liquido|floatformat:2 }}</p>
+            <p><strong>Data de Criação:</strong> {{ contrato.data_criacao|date:"d/m/Y" }}</p>
+        </div>
+    </div>
+    
+    <h3>Recebíveis Incluídos</h3>
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Tipo</th>
+                <th>Número</th>
+                <th>Vencimento</th>
+                <th>Valor</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in contrato.itens.all %}
+            <tr>
+                <td>{{ item.get_tipo_display }}</td>
+                <td>{{ item.numero }}</td>
+                <td>{{ item.vencimento|date:"d/m/Y" }}</td>
+                <td>R$ {{ item.valor|floatformat:2 }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4">Nenhum recebível adicionado.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <a href="{% url 'adicionar_item' contrato.id %}" class="btn btn-secondary">Adicionar Mais Recebíveis</a>
+    <a href="{% url 'lista_contratos' %}" class="btn btn-primary">Voltar à Lista</a>
+</div>
+{% endblock %}

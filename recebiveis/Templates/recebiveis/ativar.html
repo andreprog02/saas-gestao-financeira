@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}Ativar Contrato{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Ativar Contrato {{ contrato.contrato_id|default:"Pendente" }}</h2>
+    {% if messages %}
+    <div class="alert alert-info">
+        {% for message in messages %}
+        {{ message }}
+        {% endfor %}
+    </div>
+    {% endif %}
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-success">Ativar</button>
+    </form>
+    <a href="{% url 'simular_contrato' contrato.id %}" class="btn btn-secondary mt-3">Voltar à Simulação</a>
+</div>
+{% endblock %}

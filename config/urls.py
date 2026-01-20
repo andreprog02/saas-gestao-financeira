@@ -18,10 +18,10 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    path("admin/", admin.site.urls),
+    path("admin/", admin.site.urls),  # Removed duplicate
     path("", include("core.urls")),
     path("clientes/", include("clientes.urls")),
     path("emprestimos/", include("emprestimos.urls")),
+    path('recebiveis/', include('recebiveis.urls')),
     path("financeiro/", include("financeiro.urls")),
 ]

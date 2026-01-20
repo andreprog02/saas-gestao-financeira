@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block title %}Renegociar Contrato {{ contrato.contrato_id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Renegociar Contrato {{ contrato.contrato_id }}</h2>
+    {% if messages %}
+    <div class="alert alert-info">
+        {% for message in messages %}
+        {{ message }}
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-warning">Salvar Alterações</button>
+    </form>
+    
+    <h3 class="mt-4">Adicionar Novo Recebível</h3>
+    <form method="post" action="?add_item=1">
+        {% csrf_token %}
+        {{ item_form.as_p }}
+        <button type="submit" class="btn btn-secondary">Adicionar Item</button>
+    </form>
+    
+    <a href="{% url 'simular_contrato' contrato.id %}" class="btn btn-primary mt-3">Ver Simulação Atualizada</a>
+    <a href="{% url 'lista_contratos' %}" class="btn btn-secondary mt-3">Voltar à Lista</a>
+</div>
+{% endblock %}

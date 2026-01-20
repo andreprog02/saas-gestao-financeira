@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+
+{% load static %}  <!-- Para carregar arquivos estáticos, se necessário -->
+
+{% block title %}Adicionar Recebível ao Contrato{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Adicionar Recebível ao Contrato (ID: {{ contrato.id }})</h2>
+    <p>Cliente: {{ contrato.cliente.nome }}</p>
+
+    <!-- Formulário para adicionar novo recebível -->
+    <h3>Adicionar Novo Recebível</h3>
+    <form method="post" action="{% url 'adicionar_item' contrato.id %}">
+        {% csrf_token %}
+        <!-- Renderizando campos manualmente para adicionar atributos -->
+        <div class="form-group">
+            <label for="{{ form.tipo.id_for_label }}">Tipo:</label>
+            {{ form.tipo }}
+        </div>
+        <div class="form-group">
+            <label for="{{ form.numero.id_for_label }}">Número:</label>
+            {{ form.numero }}
+        </div>
+        <div class="form-group">
+            <label for="{{ form.vencimento.id_for_label }}">Vencimento:</label>
+            <!-- Usando type="date" para abrir calendário nativo do navegador -->
+            <input type="date" id="{{ form.vencimento.id_for_label }}" name="{{ form.vencimento.name }}" value="{{ form.vencimento.value|date:'Y-m-d' }}" class="form-control">
+            {% if form.vencimento.errors %}
+                <div class="text-danger">{{ form.vencimento.errors }}</div>
+            {% endif %}
+        </div>
+        <div class="form-group">
+            <label for="{{ form.valor.id_for_label }}">Valor:</label>
+            <!-- Campo com ID para aplicar máscara -->
+            <input type="text" id="valor" name="{{ form.valor.name }}" value="{{ form.valor.value }}" class="form-control">
+            {% if form.valor.errors %}
+                <div class="text-danger">{{ form.valor.errors }}</div>
+            {% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary">Adicionar Recebível</button>
+    </form>
+
+    <!-- Lista de itens adicionados -->
+    <h3 class="mt-4">Itens Adicionados</h3>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Número</th>
+                <th>Vencimento</th>
+                <th>Valor</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in contrato.itens.all %}
+            <tr>
+                <td>{{ item.numero }}</td>
+                <td>{{ item.vencimento|date:"d/m/Y" }}</td>
+                <td>R$ {{ item.valor|floatformat:2 }}</td>
+                <td>
+                    <!-- Botão para editar (abre modal) -->
+                    <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal{{ item.id }}">Editar</button>
+                    <!-- Formulário para excluir -->
+                    <form method="post" action="{% url 'excluir_item' item.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Tem certeza que deseja excluir?');">Excluir</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4">Nenhum recebível adicionado ainda.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Modals para edição (um por item) -->
+    {% for item in contrato.itens.all %}
+    <div class="modal fade" id="editModal{{ item.id }}" tabindex="-1" aria-labelledby="editModalLabel{{ item.id }}" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editModalLabel{{ item.id }}">Editar Recebível {{ item.numero }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form method="post" action="{% url 'editar_item' item.id %}">
+                        {% csrf_token %}
+                        <!-- Campos para edição (use um form instance com o item) -->
+                        <!-- Assumindo que você tem um form para edição; ajuste na view para passar EditItemForm(instance=item) -->
+                        <div class="form-group">
+                            <label>Tipo:</label>
+                            <select name="tipo" class="form-control">
+                                <option value="cheque" {% if item.tipo == 'cheque' %}selected{% endif %}>Cheque</option>
+                                <option value="nota_fiscal" {% if item.tipo == 'nota_fiscal' %}selected{% endif %}>Nota Fiscal</option>
+                                <option value="cartao" {% if item.tipo == 'cartao' %}selected{% endif %}>Cartão</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Número:</label>
+                            <input type="text" name="numero" value="{{ item.numero }}" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>Vencimento:</label>
+                            <input type="date" name="vencimento" value="{{ item.vencimento|date:'Y-m-d' }}" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>Valor:</label>
+                            <input type="text" name="valor" value="{{ item.valor }}" class="form-control" id="editValor{{ item.id }}">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Máscara para valor no modal -->
+    <script>
+        $(document).ready(function() {
+            $('#editValor{{ item.id }}').mask('000.000.000.000.000,00', {reverse: true});
+        });
+    </script>
+    {% endfor %}
+
+    <a href="{% url 'simular_contrato' contrato.id %}" class="btn btn-info mt-3">Simular Contrato</a>
+    <a href="{% url 'lista_contratos' %}" class="btn btn-secondary mt-3">Voltar à Lista</a>
+</div>
+
+<!-- JavaScript para máscara de dinheiro BR no form de adição -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
+<script>
+    $(document).ready(function() {
+        $('#valor').mask('000.000.000.000.000,00', {reverse: true});
+    });
+</script>
+{% endblock %}

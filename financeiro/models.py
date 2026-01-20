@@ -49,3 +49,16 @@ def calcular_saldo_atual():
     # Como saídas são salvas como negativo e entradas como positivo, basta somar.
     saldo = Transacao.objects.aggregate(total=models.Sum('valor'))['total']
     return saldo or Decimal('0.00')
+
+
+from django.db import models
+
+class LancamentoFinanceiro(models.Model):
+    data = models.DateField()
+    descricao = models.CharField(max_length=255)
+    debito = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    credito = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+
+    class Meta:
+        verbose_name = 'Lançamento Financeiro'
+        verbose_name_plural = 'Lançamentos Financeiros'
