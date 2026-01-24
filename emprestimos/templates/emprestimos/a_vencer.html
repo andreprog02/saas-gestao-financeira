@@ -10,46 +10,14 @@
 <div class="card mb-4 bg-light">
     <div class="card-body p-3">
         <form method="get" class="row g-3 align-items-end">
-            
             <div class="col-md-3">
                 <label class="form-label small fw-bold">Buscar</label>
                 <input type="text" name="q" class="form-control form-control-sm" 
                        placeholder="Cliente ou Contrato..." 
                        value="{{ request.GET.q }}">
             </div>
-
             <div class="col-md-2">
-                <label class="form-label small fw-bold">De</label>
-                <input type="date" name="data_inicio" class="form-control form-control-sm" 
-                       value="{{ request.GET.data_inicio }}">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold">Até</label>
-                <input type="date" name="data_fim" class="form-control form-control-sm" 
-                       value="{{ request.GET.data_fim }}">
-            </div>
-
-            <div class="col-md-3">
-                <label class="form-label small fw-bold">Ordenar por</label>
-                <select name="ordenacao" class="form-select form-select-sm">
-                    <option value="">Padrão (Data)</option>
-                    <option value="maior_valor" {% if request.GET.ordenacao == "maior_valor" %}selected{% endif %}>Maior Valor</option>
-                    <option value="menor_valor" {% if request.GET.ordenacao == "menor_valor" %}selected{% endif %}>Menor Valor</option>
-                    <option value="cliente_az" {% if request.GET.ordenacao == "cliente_az" %}selected{% endif %}>Cliente (A-Z)</option>
-                    <option value="contrato" {% if request.GET.ordenacao == "contrato" %}selected{% endif %}>Contrato</option>
-                    <option value="vencimento_longe" {% if request.GET.ordenacao == "vencimento_longe" %}selected{% endif %}>Vencimento (Mais longe)</option>
-                </select>
-            </div>
-
-            <div class="col-md-2 d-flex gap-1">
-                <button type="submit" class="btn btn-primary btn-sm w-100">
-                    <i class="bi bi-filter"></i> Filtrar
-                </button>
-                {% if request.GET %}
-                    <a href="{{ request.path }}" class="btn btn-outline-secondary btn-sm" title="Limpar Filtros">
-                        <i class="bi bi-x-lg"></i>
-                    </a>
-                {% endif %}
+                <button type="submit" class="btn btn-primary btn-sm w-100">Filtrar</button>
             </div>
         </form>
     </div>
@@ -90,9 +58,18 @@
                 </td>
                 
                 <td class="text-center">
-                    <a href="{% url 'emprestimos:pagar_parcela' p.id %}" class="btn btn-sm btn-success">
+                    <button type="button" 
+                            class="btn btn-sm btn-success"
+                            data-bs-toggle="modal" 
+                            data-bs-target="#modalPagarParcela"
+                            data-id="{{ p.id }}"
+                            data-numero="{{ p.numero }}"
+                            data-vencimento="{{ p.vencimento|date:'d/m/Y' }}"
+                            data-valor="{{ p.valor|floatformat:2 }}"
+                            data-cliente="{{ p.emprestimo.cliente.nome_completo }}"
+                            data-contrato="{{ p.emprestimo.codigo_contrato }}">
                         <i class="bi bi-cash-coin"></i> Receber
-                    </a>
+                    </button>
                 </td>
             </tr>
             {% empty %}
@@ -105,4 +82,83 @@
         </tbody>
     </table>
 </div>
+
+<div class="modal fade" id="modalPagarParcela" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title">Confirmar Pagamento</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      
+      <form method="post" id="formPagarParcela" action="">
+        {% csrf_token %}
+        <div class="modal-body">
+          <p class="text-center fs-5 mb-3">Deseja efetuar a baixa desta parcela?</p>
+          
+          <div class="card bg-light mb-3">
+            <div class="card-body">
+              <ul class="list-unstyled mb-0">
+                <li><strong>Cliente:</strong> <span id="pg_cliente"></span></li>
+                <li><strong>Contrato:</strong> <span id="pg_contrato"></span></li>
+                <li><strong>Parcela nº:</strong> <span id="pg_numero"></span></li>
+                <li><strong>Vencimento:</strong> <span id="pg_vencimento"></span></li>
+                <li class="mt-2 fs-5 text-success"><strong>Valor: R$ <span id="pg_valor"></span></strong></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="senha_pagamento" class="form-label fw-bold">Senha de Confirmação</label>
+            <input type="password" name="senha" id="senha_pagamento" class="form-control text-center" 
+                   placeholder="Digite a senha (1234)" required autocomplete="off">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não, cancelar</button>
+          <button type="submit" class="btn btn-success fw-bold">Sim, confirmar pagamento</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var modalPagar = document.getElementById('modalPagarParcela');
+    if (modalPagar) {
+      modalPagar.addEventListener('show.bs.modal', function (event) {
+        // Botão que acionou o modal
+        var button = event.relatedTarget;
+        
+        // Extrair info dos atributos data-*
+        var id = button.getAttribute('data-id');
+        var numero = button.getAttribute('data-numero');
+        var vencimento = button.getAttribute('data-vencimento');
+        var valor = button.getAttribute('data-valor');
+        var cliente = button.getAttribute('data-cliente');
+        var contrato = button.getAttribute('data-contrato');
+
+        // Atualizar os textos do modal
+        modalPagar.querySelector('#pg_cliente').textContent = cliente;
+        modalPagar.querySelector('#pg_contrato').textContent = contrato;
+        modalPagar.querySelector('#pg_numero').textContent = numero;
+        modalPagar.querySelector('#pg_vencimento').textContent = vencimento;
+        modalPagar.querySelector('#pg_valor').textContent = valor;
+        
+        // Limpar senha
+        modalPagar.querySelector('#senha_pagamento').value = '';
+
+        // Atualizar a ACTION do formulário
+        var form = modalPagar.querySelector('#formPagarParcela');
+        form.action = '/emprestimos/parcela/' + id + '/pagar/';
+      });
+      
+      modalPagar.addEventListener('shown.bs.modal', function () {
+        document.getElementById('senha_pagamento').focus();
+      });
+    }
+  });
+</script>
 {% endblock %}

@@ -4,7 +4,6 @@ from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models, transaction
 from django.utils import timezone
-from django.core.validators import MinValueValidator, MaxValueValidator
 
 from clientes.models import Cliente
 
@@ -45,7 +44,7 @@ class Emprestimo(models.Model):
     )
     primeiro_vencimento = models.DateField()
 
-    # valores calculados/salvos (já com arredondamento aplicado)
+    # valores calculados/salvos
     valor_parcela_aplicada = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     total_contrato = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     total_juros = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
@@ -60,13 +59,13 @@ class Emprestimo(models.Model):
     tem_multa_atraso = models.BooleanField(default=True)
 
     multa_atraso_percent = models.DecimalField(
-    max_digits=5, decimal_places=2, default=Decimal("2.00"),
-    validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("20.00"))]
+        max_digits=5, decimal_places=2, default=Decimal("2.00"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("20.00"))]
     )
 
     juros_mora_mensal_percent = models.DecimalField(
-    max_digits=5, decimal_places=2, default=Decimal("1.00"),
-    validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("20.00"))]
+        max_digits=5, decimal_places=2, default=Decimal("1.00"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("20.00"))]
     )
 
     # cancelamento (auditável)
@@ -92,14 +91,6 @@ class Emprestimo(models.Model):
         return f"{self.codigo_contrato} - {self.cliente.nome_completo}"
 
     def atualizar_status(self):
-        """
-        Atualiza status automaticamente:
-        - CANCELADO mantém cancelado
-        - se não houver parcelas: ATIVO
-        - se não houver parcelas ABERTAS: QUITADO
-        - se houver aberta vencida: ATRASADO
-        - caso contrário: ATIVO
-        """
         if self.status == EmprestimoStatus.CANCELADO:
             return
 
@@ -143,6 +134,52 @@ class Parcela(models.Model):
     def __str__(self):
         return f"{self.emprestimo.codigo_contrato} - Parcela {self.numero}"
 
+    @property
+    def dados_atualizados(self):
+        """
+        Retorna um dicionário com:
+        - valor_original
+        - multa
+        - juros
+        - dias_atraso
+        - total
+        """
+        hoje = timezone.localdate()
+        
+        # Se não está atrasada ou já foi paga, retorna o valor normal
+        if self.status != ParcelaStatus.ABERTA or self.vencimento >= hoje:
+            return {
+                'valor_original': self.valor,
+                'multa': Decimal("0.00"),
+                'juros': Decimal("0.00"),
+                'dias_atraso': 0,
+                'total': self.valor
+            }
+
+        contrato = self.emprestimo
+        dias_atraso = (hoje - self.vencimento).days
+        
+        # 1. Calcular Multa
+        multa = Decimal("0.00")
+        if contrato.tem_multa_atraso:
+            multa = self.valor * (contrato.multa_atraso_percent / Decimal("100"))
+        
+        # 2. Calcular Juros (Juros Simples pro-rata dia)
+        juros = Decimal("0.00")
+        if contrato.juros_mora_mensal_percent > 0:
+            taxa_diaria = (contrato.juros_mora_mensal_percent / Decimal("30")) / Decimal("100")
+            juros = self.valor * taxa_diaria * Decimal(dias_atraso)
+
+        total = self.valor + multa + juros
+
+        return {
+            'valor_original': self.valor,
+            'multa': multa.quantize(Decimal("0.01")),
+            'juros': juros.quantize(Decimal("0.01")),
+            'dias_atraso': dias_atraso,
+            'total': total.quantize(Decimal("0.01"))
+        }
+
     @transaction.atomic
     def marcar_como_paga(self, valor_pago=None, data_pagamento=None):
         self.status = ParcelaStatus.PAGA
@@ -155,30 +192,30 @@ class Parcela(models.Model):
         emp.save(update_fields=["status", "atualizado_em"])
 
 
+# === ESTA É A CLASSE QUE ESTAVA FALTANDO ===
+# === CORREÇÃO DA CLASSE CONTRATOLOG ===
 class ContratoLog(models.Model):
     class Acao(models.TextChoices):
         CRIADO = "CRIADO", "Criado"
-        PAGO = "PAGO", "Pagamento"
+        PAGO = "PAGO", "Pago"
         RENEGOCIADO = "RENEGOCIADO", "Renegociado"
         CANCELADO = "CANCELADO", "Cancelado"
         REABERTO = "REABERTO", "Reaberto"
 
     contrato = models.ForeignKey(Emprestimo, on_delete=models.CASCADE, related_name="logs")
-    acao = models.CharField(max_length=20, choices=Acao.choices)
-    criado_em = models.DateTimeField(default=timezone.now)
-
+    acao = models.CharField(max_length=50, choices=Acao.choices)
+    
     usuario = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
         blank=True
     )
-
-    motivo = models.CharField(max_length=120, null=True, blank=True)
+    
+    # Alterado de 'data' para 'criado_em' para evitar conflitos antigos
+    criado_em = models.DateTimeField(auto_now_add=True)
+    motivo = models.CharField(max_length=255, null=True, blank=True)
     observacao = models.TextField(null=True, blank=True)
 
-    class Meta:
-        ordering = ["-criado_em"]
-
     def __str__(self):
-        return f"{self.contrato.codigo_contrato} - {self.acao} - {self.criado_em:%d/%m/%Y %H:%M}"
+        return f"{self.contrato.codigo_contrato} - {self.acao} em {self.criado_em.strftime('%d/%m/%Y')}"

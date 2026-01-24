@@ -67,7 +67,7 @@ def renegociar(request, emprestimo_id: int):
     contrato.status = EmprestimoStatus.RENEGOCIADO
     contrato.save(update_fields=["status", "atualizado_em"])
 
-    codigo = gerar_codigo_contrato()
+    codigo = gerar_codigo_contrato(prefixo="RNG EMP")
 
     _, parcela_aplicada, total_contrato, ajuste, parcelas = simular(
         valor_emprestado=saldo,

@@ -1,0 +1,302 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Gestão de Cobrança{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="text-danger fw-bold"><i class="bi bi-exclamation-octagon"></i> Gestão de Inadimplência</h2>
+            <p class="text-muted">Acompanhamento de contratos em atraso e ações de cobrança</p>
+        </div>
+        <div>
+            <div class="card bg-danger text-white p-2 text-center" style="min-width: 150px;">
+                <span class="small">Contratos em Atraso</span>
+                <h3 class="m-0 fw-bold">{{ lista|length }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Contrato</th>
+                            <th class="text-center">Dias Atraso</th>
+                            <th>Valor Original</th>
+                            <th>Ação Sugerida</th>
+                            <th>Último Evento</th>
+                            <th class="text-end">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in lista %}
+                        <tr>
+                            <td class="fw-bold">{{ item.cliente.nome_completo }}</td>
+                            <td>
+                                <span class="badge {% if item.tipo == 'EMPRESTIMO' %}bg-primary{% else %}bg-info text-dark{% endif %}">
+                                    {{ item.codigo }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <h4 class="m-0 text-danger fw-bold">{{ item.dias_atraso }}</h4>
+                                <small class="text-muted" style="font-size: 0.75rem;">Desde {{ item.primeiro_atraso|date:"d/m/Y" }}</small>
+                            </td>
+                            <td class="text-danger fw-bold text-nowrap">R$ {{ item.valor_atraso|floatformat:2|intcomma }}</td>
+                            
+                            <td>
+                                <span class="badge bg-{{ item.cor_badge }} w-100 p-2 border border-light shadow-sm">
+                                    {{ item.acao_sugerida }}
+                                </span>
+                            </td>
+                            <td style="max-width: 250px;">
+                                {% if item.ultimo_evento %}
+                                    <div class="d-flex align-items-center">
+                                        <div class="me-2 text-center" style="min-width: 45px; line-height: 1;">
+                                            <small class="d-block fw-bold">{{ item.ultimo_evento.data_evento|date:"d" }}</small>
+                                            <small class="d-block text-muted" style="font-size: 0.65rem;">{{ item.ultimo_evento.data_evento|date:"M" }}</small>
+                                        </div>
+                                        <div class="text-truncate">
+                                            <small class="text-dark fw-bold d-block">{{ item.ultimo_evento.usuario.username|default:"Sistema" }}</small>
+                                            <small class="text-muted text-truncate d-block" title="{{ item.ultimo_evento.descricao }}">
+                                                {{ item.ultimo_evento.descricao }}
+                                            </small>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted small ms-2">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-primary" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#modalAnalitico{{ forloop.counter }}">
+                                        <i class="bi bi-list-check"></i> Analítico
+                                    </button>
+                                    
+                                    <button class="btn btn-sm btn-outline-dark" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#modalEvento"
+                                            data-tipo="{{ item.tipo }}"
+                                            data-id="{{ item.id_contrato }}"
+                                            data-cliente="{{ item.cliente.nome_completo }}"
+                                            data-contrato="{{ item.codigo }}">
+                                        <i class="bi bi-journal-plus"></i>
+                                    </button>
+                                </div>
+
+                                <div class="modal fade" id="modalAnalitico{{ forloop.counter }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog modal-xl text-start">
+                                        <div class="modal-content">
+                                            <div class="modal-header bg-light">
+                                                <h5 class="modal-title">
+                                                    <i class="bi bi-file-text"></i> Detalhes: {{ item.codigo }}
+                                                </h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body p-0">
+                                                <div class="p-3 bg-light border-bottom d-flex justify-content-between">
+                                                    <div>
+                                                        <strong>Cliente:</strong> {{ item.cliente.nome_completo }}
+                                                    </div>
+                                                    <div>
+                                                        <strong>Valor Original Atrasado:</strong> R$ {{ item.valor_atraso|floatformat:2|intcomma }}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="table-responsive">
+                                                    <table class="table table-sm table-striped mb-0 align-middle">
+                                                        <thead class="table-dark text-center">
+                                                            <tr>
+                                                                <th>Parc.</th>
+                                                                <th>Vencimento</th>
+                                                                <th>Valor Orig.</th>
+                                                                <th>Multa</th>
+                                                                <th>Juros</th>
+                                                                <th>Total Atualizado</th>
+                                                                <th>Ação</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {% for parc in item.itens_detalhe %}
+                                                            
+                                                            {# Verifica se é empréstimo para calcular juros #}
+                                                            {% if item.tipo == 'EMPRESTIMO' %}
+                                                                {% with dados=parc.dados_atualizados %}
+                                                                <tr>
+                                                                    <td class="text-center">{{ parc.numero }}</td>
+                                                                    <td class="text-center">
+                                                                        {{ parc.vencimento|date:"d/m/Y" }}
+                                                                        {% if dados.dias_atraso > 0 %}
+                                                                            <br><small class="text-danger fw-bold">({{ dados.dias_atraso }} dias)</small>
+                                                                        {% endif %}
+                                                                    </td>
+                                                                    <td class="text-center">R$ {{ parc.valor|floatformat:2|intcomma }}</td>
+                                                                    
+                                                                    <td class="text-center text-danger">
+                                                                        {% if dados.multa > 0 %}
+                                                                            + {{ dados.multa|floatformat:2 }}
+                                                                        {% else %}
+                                                                            -
+                                                                        {% endif %}
+                                                                    </td>
+
+                                                                    <td class="text-center text-danger">
+                                                                        {% if dados.juros > 0 %}
+                                                                            + {{ dados.juros|floatformat:2 }}
+                                                                        {% else %}
+                                                                            -
+                                                                        {% endif %}
+                                                                    </td>
+
+                                                                    <td class="text-center">
+                                                                        <strong class="text-danger fs-6">
+                                                                            R$ {{ dados.total|floatformat:2|intcomma }}
+                                                                        </strong>
+                                                                    </td>
+
+                                                                    <td class="text-center">
+                                                                        <form action="{% url 'emprestimos:pagar_parcela' parc.id %}" method="POST" class="d-flex justify-content-center gap-2">
+                                                                            {% csrf_token %}
+                                                                            <input type="password" name="senha" class="form-control form-control-sm" placeholder="Senha" style="width: 80px;" required>
+                                                                            <button type="submit" class="btn btn-success btn-sm text-nowrap">
+                                                                                <i class="bi bi-cash"></i> Pagar
+                                                                            </button>
+                                                                        </form>
+                                                                    </td>
+                                                                </tr>
+                                                                {% endwith %}
+                                                            
+                                                            {% else %}
+                                                                {# Lógica para Recebíveis (mostra traços em juros/multa) #}
+                                                                <tr>
+                                                                    <td class="text-center">{{ parc.numero|default:"-" }}</td>
+                                                                    <td class="text-center">
+                                                                        {{ parc.vencimento|date:"d/m/Y" }}
+                                                                        {% if item.dias_atraso > 0 %}
+                                                                            <br><small class="text-danger">({{ item.dias_atraso }} dias)</small>
+                                                                        {% endif %}
+                                                                    </td>
+                                                                    <td class="text-center">R$ {{ parc.valor|floatformat:2|intcomma }}</td>
+                                                                    <td class="text-center">-</td>
+                                                                    <td class="text-center">-</td>
+                                                                    <td class="text-center fw-bold">R$ {{ parc.valor|floatformat:2|intcomma }}</td>
+                                                                    <td class="text-center">
+                                                                        <form action="{% url 'recebiveis:liquidar_item' parc.id %}" method="POST" class="d-flex justify-content-center">
+                                                                            {% csrf_token %}
+                                                                            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Confirmar liquidação?')">
+                                                                                <i class="bi bi-check-lg"></i> Baixar
+                                                                            </button>
+                                                                        </form>
+                                                                    </td>
+                                                                </tr>
+                                                            {% endif %}
+
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                {% if item.tipo == 'EMPRESTIMO' %}
+                                                    <a href="{% url 'emprestimos:contrato_detalhe' item.id_contrato %}" class="btn btn-warning">
+                                                        <i class="bi bi-arrow-right-circle"></i> Ver Contrato
+                                                    </a>
+                                                {% else %}
+                                                    <a href="{% url 'recebiveis:lista_contratos' %}" class="btn btn-warning">
+                                                        <i class="bi bi-arrow-right-circle"></i> Ver Recebíveis
+                                                    </a>
+                                                {% endif %}
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5">
+                                <div class="text-success mb-2">
+                                    <i class="bi bi-check-circle-fill" style="font-size: 3rem;"></i>
+                                </div>
+                                <h4 class="text-success fw-bold">Tudo em dia!</h4>
+                                <p class="text-muted">Nenhum contrato com parcelas vencidas no momento.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalEvento" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{% url 'cobranca:registrar_evento' %}" method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="tipo_contrato" id="inputTipo">
+                <input type="hidden" name="id_contrato" id="inputId">
+                
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="bi bi-journal-plus"></i> Registrar Cobrança</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-secondary mb-3 py-2">
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted d-block">Cliente</small>
+                                <strong id="spanCliente" class="text-truncate d-block"></strong>
+                            </div>
+                            <div class="col-6 text-end">
+                                <small class="text-muted d-block">Contrato</small>
+                                <strong id="spanContrato"></strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Data do Evento</label>
+                        <input type="datetime-local" name="data_evento" class="form-control" required value="{% now 'Y-m-d\TH:i' %}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Descrição / Observação</label>
+                        <textarea name="descricao" class="form-control" rows="4" required placeholder="Ex: Contato telefônico realizado. Cliente prometeu pagar dia..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success fw-bold">Salvar Evento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    var modalEvento = document.getElementById('modalEvento')
+    if (modalEvento) {
+        modalEvento.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget
+            var tipo = button.getAttribute('data-tipo')
+            var id = button.getAttribute('data-id')
+            var cliente = button.getAttribute('data-cliente')
+            var contrato = button.getAttribute('data-contrato')
+
+            document.getElementById('inputTipo').value = tipo
+            document.getElementById('inputId').value = id
+            document.getElementById('spanCliente').textContent = cliente
+            document.getElementById('spanContrato').textContent = contrato
+        })
+    }
+</script>
+{% endblock %}

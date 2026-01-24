@@ -6,41 +6,130 @@
 <div class="container mt-5">
     <h2>Contratos de Adiantamento de Recebíveis</h2>
     <a href="{% url 'criar_contrato' %}" class="btn btn-primary mb-3">Criar Novo Contrato</a>
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Cliente</th>
-                <th>Status</th>
-                <th>Valor Bruto</th>
-                <th>Valor Líquido</th>
-                <th>Data Criação</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for contrato in contratos %}
-            <tr>
-                <td>{{ contrato.contrato_id|default:"Pendente" }}</td>
-                <td>{{ contrato.cliente.nome }}</td>
-                <td>{{ contrato.get_status_display }}</td>
-                <td>R$ {{ contrato.valor_bruto|floatformat:2 }}</td>
-                <td>R$ {{ contrato.valor_liquido|floatformat:2 }}</td>
-                <td>{{ contrato.data_criacao|date:"d/m/Y" }}</td>
-                <td>
-                    <a href="{% url 'simular_contrato' contrato.id %}" class="btn btn-info btn-sm">Simular</a>
-                    {% if contrato.status == 'simulado' %}
-                    <a href="{% url 'ativar_contrato' contrato.id %}" class="btn btn-success btn-sm">Ativar</a>
-                    {% endif %}
-                    {% if contrato.status == 'ativo' %}
-                    <a href="{% url 'renegociar_contrato' contrato.id %}" class="btn btn-warning btn-sm">Renegociar</a>
-                    {% endif %}
-                </td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="7">Nenhum contrato encontrado.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Cliente</th>
+                    <th>Status</th>
+                    <th>Valor Bruto</th>
+                    <th>Valor Líquido</th>
+                    <th>Data Criação</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for contrato in contratos %}
+                <tr>
+                    <td>{{ contrato.contrato_id|default:"Pendente" }}</td>
+                    <td>{{ contrato.cliente.nome_completo }}</td>
+                    <td>
+                        {% if contrato.status == 'ativo' %}
+                            <span class="badge bg-success">Ativo</span>
+                        {% elif contrato.status == 'liquidado' %}
+                            <span class="badge bg-secondary">Liquidado</span>
+                        {% elif contrato.status == 'renegociado' %}
+                            <span class="badge bg-warning text-dark">Renegociado</span>
+                        {% else %}
+                            <span class="badge bg-info text-dark">Simulado</span>
+                        {% endif %}
+                    </td>
+                    <td>R$ {{ contrato.valor_bruto|floatformat:2 }}</td>
+                    <td>R$ {{ contrato.valor_liquido|floatformat:2 }}</td>
+                    <td>{{ contrato.data_criacao|date:"d/m/Y" }}</td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            {% if contrato.status == 'simulado' %}
+                                <a href="{% url 'simular_contrato' contrato.id %}" class="btn btn-info btn-sm">Simular</a>
+                                <a href="{% url 'ativar_contrato' contrato.id %}" class="btn btn-success btn-sm">Ativar</a>
+                            {% else %}
+                                <button type="button" class="btn btn-dark btn-sm" data-bs-toggle="modal" data-bs-target="#modalLiquidar{{ contrato.id }}">
+                                    <i class="bi bi-cash"></i> Liquidar / Ver
+                                </button>
+                                
+                                {% if contrato.status == 'ativo' %}
+                                    <a href="{% url 'renegociar_contrato' contrato.id %}" class="btn btn-warning btn-sm">Renegociar</a>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+
+                        <div class="modal fade" id="modalLiquidar{{ contrato.id }}" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-lg text-start"> <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Liquidação - Contrato {{ contrato.contrato_id }}</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <p><strong>Cliente:</strong> {{ contrato.cliente.nome_completo }}</p>
+                                        
+                                        <h6 class="mt-3">Itens do Contrato</h6>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-bordered">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Tipo</th>
+                                                        <th>Número</th>
+                                                        <th>Vencimento</th>
+                                                        <th>Valor</th>
+                                                        <th>Status</th>
+                                                        <th>Ação</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for item in contrato.itens.all %}
+                                                    <tr>
+                                                        <td>{{ item.get_tipo_display }}</td>
+                                                        <td>{{ item.numero }}</td>
+                                                        <td>{{ item.vencimento|date:"d/m/Y" }}</td>
+                                                        <td>R$ {{ item.valor|floatformat:2 }}</td>
+                                                        <td>
+                                                            {% if item.status == 'pago' %}
+                                                                <span class="text-success fw-bold">Pago</span>
+                                                            {% else %}
+                                                                <span class="text-danger">Aberto</span>
+                                                            {% endif %}
+                                                        </td>
+                                                        <td>
+                                                            {% if item.status == 'aberto' %}
+                                                            <form action="{% url 'liquidar_item' item.id %}" method="POST" style="display:inline;">
+                                                                {% csrf_token %}
+                                                                <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Confirmar recebimento deste item?');">
+                                                                    Receber
+                                                                </button>
+                                                            </form>
+                                                            {% else %}
+                                                                <span class="text-muted small">{{ item.data_pagamento|date:"d/m/Y" }}</span>
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer bg-light">
+                                        {% if contrato.status != 'liquidado' %}
+                                            <form action="{% url 'liquidar_contrato' contrato.id %}" method="POST">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-danger" onclick="return confirm('Tem certeza que deseja liquidar TODAS as parcelas restantes deste contrato?');">
+                                                    Liquidar Contrato Inteiro
+                                                </button>
+                                            </form>
+                                        {% endif %}
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center">Nenhum contrato encontrado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

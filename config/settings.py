@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "financeiro",
     "recebiveis",
     "emprestimos",
+    "cobranca",  # <--- App de Cobrança adicionado aqui
 ]
 
 MIDDLEWARE = [
@@ -51,7 +52,6 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        # aqui é para achar templates/base.html (pasta /templates)
         "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -101,6 +101,12 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Configurações do Sistema
 CONTRATO_DELETE_PASSWORD = "1234"
-MANAGER_PASSWORD = "1234"  # Defina sua senha aqui
+MANAGER_PASSWORD = "1234"
 
+# ... (no final do arquivo)
+
+# Redireciona para o login do Admin quando precisar se autenticar
+LOGIN_URL = '/admin/login/'
+LOGIN_REDIRECT_URL = '/'

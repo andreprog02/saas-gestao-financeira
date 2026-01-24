@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from decimal import Decimal
+from django.contrib.auth.models import User  # Importação Necessária
 
 class Transacao(models.Model):
     TIPO_CHOICES = [
@@ -16,18 +17,16 @@ class Transacao(models.Model):
     descricao = models.CharField(max_length=255)
     data = models.DateTimeField(default=timezone.now)
     
-    # NOVO CAMPO: Para vincular estornos à transação original (ID de autenticação/vinculação)
+    # Campos de Vinculação
     transacao_original = models.ForeignKey(
         'self', 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True, 
         related_name='estornos',
-        verbose_name='Transação Original (ID Autenticação)'
+        verbose_name='Transação Original'
     )
     
-    # Opcional: Linkar com um empréstimo se for um pagamento ou saída
-    # Usamos string 'emprestimos.Emprestimo' para evitar import circular
     emprestimo = models.ForeignKey(
         'emprestimos.Emprestimo', 
         on_delete=models.SET_NULL, 
@@ -35,6 +34,41 @@ class Transacao(models.Model):
         blank=True,
         related_name='transacoes'
     )
+
+    # === NOVOS CAMPOS DE AUDITORIA (CÓDIGO DE AUTENTICAÇÃO) ===
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    ip_origem = models.GenericIPAddressField(null=True, blank=True)
+    codigo_autenticacao = models.TextField(blank=True, null=True, help_text="Código hash para auditoria")
+
+    def save(self, *args, **kwargs):
+        # Gera o código de autenticação antes de salvar, se ele não existir
+        if not self.codigo_autenticacao:
+            self.gerar_codigo_auditoria()
+        super().save(*args, **kwargs)
+
+    def gerar_codigo_auditoria(self):
+        """Gera uma string formatada linha a linha para leitura/auditoria."""
+        user_str = self.usuario.username if self.usuario else "Sistema/Desconhecido"
+        # Garante que a data tenha timezone ou usa string simples
+        data_str = self.data.strftime('%d/%m/%Y às %H:%M:%S')
+        ip_str = self.ip_origem if self.ip_origem else "IP Não registrado"
+        valor_str = f"R$ {self.valor}"
+        
+        # Cria um bloco de texto único que serve como "Assinatura Digital" simples
+        texto = (
+            f"AUTENTICACAO_FINANCEIRA\n"
+            f"-----------------------\n"
+            f"ID_TRANSACAO: {timezone.now().timestamp()}\n"
+            f"TIPO: {self.get_tipo_display()}\n"
+            f"VALOR: {valor_str}\n"
+            f"USUARIO_RESPONSAVEL: {user_str}\n"
+            f"DATA_REGISTRO: {data_str}\n"
+            f"IP_ORIGEM: {ip_str}\n"
+            f"DESCRICAO: {self.descricao}\n"
+            f"-----------------------\n"
+            f"HASH_VERIFICACAO: {hash(f'{user_str}{data_str}{valor_str}')}" # Hash simples
+        )
+        self.codigo_autenticacao = texto
 
     class Meta:
         ordering = ['-data']
@@ -45,13 +79,8 @@ class Transacao(models.Model):
         return f"{self.get_tipo_display()} - R$ {self.valor}"
 
 def calcular_saldo_atual():
-    # Soma todos os valores da tabela. 
-    # Como saídas são salvas como negativo e entradas como positivo, basta somar.
     saldo = Transacao.objects.aggregate(total=models.Sum('valor'))['total']
     return saldo or Decimal('0.00')
-
-
-from django.db import models
 
 class LancamentoFinanceiro(models.Model):
     data = models.DateField()

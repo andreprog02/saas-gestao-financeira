@@ -16,6 +16,7 @@ from django.utils.dateparse import parse_date
 
 # Financeiro Imports
 from financeiro.models import Transacao, calcular_saldo_atual
+from financeiro.utils import get_client_ip
 
 # Third-party Imports
 from num2words import num2words 
@@ -40,29 +41,19 @@ from .utils import gerar_codigo_contrato
 #  FUNÇÃO AUXILIAR: TRATAMENTO DE VALORES MONETÁRIOS
 # =============================================================================
 def parse_valor_monetario(valor_str):
-    """
-    Converte string para Decimal de forma inteligente.
-    - Se tiver vírgula (ex: "1.000,50"), trata como formato BR (remove ponto, troca vírgula).
-    - Se não tiver vírgula (ex: "1000.50"), trata como formato US/DB (mantém ponto).
-    """
     if not valor_str:
         return Decimal("0.00")
-    
     valor_str = str(valor_str).strip()
-    
     if ',' in valor_str:
-        # Formato BR (1.000,00) -> Remove ponto milhar, troca vírgula por ponto
         clean = valor_str.replace('.', '').replace(',', '.')
         return Decimal(clean)
     else:
-        # Formato US (1000.00) ou Inteiro (1000) -> Django/Browser input type="number"
         return Decimal(valor_str)
 
 
 # =============================================================================
 #  PDF GENERATION
 # =============================================================================
-
 def contrato_pdf(request, emprestimo_id: int):
     contrato = get_object_or_404(Emprestimo.objects.select_related("cliente"), id=emprestimo_id)
     cliente = contrato.cliente
@@ -77,7 +68,6 @@ def contrato_pdf(request, emprestimo_id: int):
     )
 
     styles = getSampleStyleSheet()
-    
     style_titulo = ParagraphStyle('Titulo', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=14, spaceAfter=10)
     style_normal = ParagraphStyle('Normal_Justificado', parent=styles['Normal'], alignment=TA_JUSTIFY, fontSize=10, leading=12, spaceAfter=6)
     style_centro = ParagraphStyle('Centro', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10)
@@ -223,7 +213,6 @@ def contrato_pdf(request, emprestimo_id: int):
 # =============================================================================
 #  VIEWS DE CADASTRO E BUSCA
 # =============================================================================
-
 def novo_emprestimo_busca_cliente(request):
     form = SelecionarClienteForm(request.GET or None)
     clientes = None
@@ -269,7 +258,15 @@ def novo_emprestimo_form(request, cliente_id: int):
                     
                     ContratoLog.objects.create(contrato=emprestimo, acao=ContratoLog.Acao.CRIADO, usuario=request.user if request.user.is_authenticated else None, motivo="Cadastro inicial")
 
-                    Transacao.objects.create(tipo='EMPRESTIMO_SAIDA', valor=-valor_solicitado, descricao=f"Empréstimo {emprestimo.codigo_contrato} - {cliente.nome_completo}", emprestimo=emprestimo)
+                    ip_cliente = get_client_ip(request)
+                    Transacao.objects.create(
+                        tipo='EMPRESTIMO_SAIDA', 
+                        valor=-valor_solicitado, 
+                        descricao=f"Empréstimo {emprestimo.codigo_contrato} - {cliente.nome_completo}", 
+                        emprestimo=emprestimo,
+                        usuario=request.user if request.user.is_authenticated else None,
+                        ip_origem=ip_cliente
+                    )
 
                 messages.success(request, f"Empréstimo cadastrado com sucesso! Contrato: {codigo}")
                 return redirect("emprestimos:contrato_detalhe", emprestimo_id=emprestimo.id)
@@ -284,7 +281,6 @@ def novo_emprestimo_form(request, cliente_id: int):
 # =============================================================================
 #  VIEWS DE LISTAGEM E DETALHES
 # =============================================================================
-
 def contratos(request):
     qs = Emprestimo.objects.select_related("cliente").all()
     return render(request, "emprestimos/contratos.html", {"contratos": qs})
@@ -370,11 +366,40 @@ def pagar_parcela(request, parcela_id: int):
         messages.warning(request, f"A parcela {p.numero} já consta como paga.")
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
     
-    p.marcar_como_paga()
-    ContratoLog.objects.create(contrato=contrato, acao=ContratoLog.Acao.PAGO, usuario=request.user if request.user.is_authenticated else None, motivo=f"Parcela {p.numero} paga manualmente")
-    Transacao.objects.create(tipo='PAGAMENTO_ENTRADA', valor=p.valor, descricao=f"Recebimento Parc. {p.numero}/{contrato.qtd_parcelas} - {contrato.cliente.nome_completo}", emprestimo=contrato)
+    # === CORREÇÃO: CALCULAR JUROS E MULTA NO PAGAMENTO ===
+    dados = p.dados_atualizados  # Pega o dicionário com valor_original, multa, juros e total
+    valor_final = dados['total']
+    
+    # Baixa a parcela com o valor ATUALIZADO
+    p.marcar_como_paga(valor_pago=valor_final)
+    
+    # Log detalhado
+    detalhes_log = f"Parcela {p.numero} paga manualmente."
+    if dados['multa'] > 0 or dados['juros'] > 0:
+        detalhes_log += f" (Multa: {dados['multa']} + Juros: {dados['juros']})"
 
-    messages.success(request, f"Parcela {p.numero} paga com sucesso!")
+    ContratoLog.objects.create(
+        contrato=contrato, 
+        acao=ContratoLog.Acao.PAGO, 
+        usuario=request.user if request.user.is_authenticated else None, 
+        motivo=detalhes_log
+    )
+    
+    # Registro Financeiro com VALOR TOTAL
+    ip_cliente = get_client_ip(request)
+    Transacao.objects.create(
+        tipo='PAGAMENTO_ENTRADA', 
+        valor=valor_final, 
+        descricao=f"Recebimento Parc. {p.numero}/{contrato.qtd_parcelas} - {contrato.cliente.nome_completo}", 
+        emprestimo=contrato,
+        usuario=request.user if request.user.is_authenticated else None,
+        ip_origem=ip_cliente
+    )
+
+    msg_sucesso = f"Parcela {p.numero} paga com sucesso! Valor: R$ {valor_final:,.2f}"
+    messages.success(request, msg_sucesso)
+    
+    # Redireciona de volta para onde o usuário estava (se possível) ou para detalhes
     return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
 
@@ -386,17 +411,13 @@ def renegociar(request, emprestimo_id):
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
     try:
-        # 1. TRATAMENTO ROBUSTO DE DADOS
-        # A) Valores Monetários (Usa função auxiliar que detecta Ponto vs Vírgula)
         entrada = parse_valor_monetario(request.POST.get("entrada", ""))
-        
         usar_taxa_antiga = request.POST.get("usar_taxa_antiga") == "1"
         if not usar_taxa_antiga:
             nova_taxa = parse_valor_monetario(request.POST.get("nova_taxa", ""))
         else:
             nova_taxa = contrato.taxa_juros_mensal
         
-        # B) Data (Converte string 'YYYY-MM-DD' para objeto Date)
         novo_vencimento_str = request.POST.get("novo_vencimento")
         novo_vencimento = parse_date(novo_vencimento_str)
         if not novo_vencimento:
@@ -405,7 +426,6 @@ def renegociar(request, emprestimo_id):
         qtd_parcelas = int(request.POST["qtd_parcelas"])
         taxa = contrato.taxa_juros_mensal if usar_taxa_antiga else nova_taxa
 
-        # 2. Cálculos
         saldo_total_antigo = contrato.parcelas.filter(status=ParcelaStatus.ABERTA).aggregate(total=models.Sum("valor"))["total"] or Decimal("0.00")
         valor_novo_emprestimo = saldo_total_antigo - entrada
 
@@ -413,15 +433,37 @@ def renegociar(request, emprestimo_id):
             messages.error(request, "A entrada cobre todo o saldo. Use a quitação antecipada.")
             return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
-        # 3. Transações
+        ip_cliente = get_client_ip(request)
+        usuario_logado = request.user if request.user.is_authenticated else None
+
         if entrada > 0:
-            Transacao.objects.create(tipo='DEPOSITO', valor=entrada, descricao=f"Entrada Renegociação {contrato.codigo_contrato}", emprestimo=contrato)
+            Transacao.objects.create(
+                tipo='DEPOSITO', 
+                valor=entrada, 
+                descricao=f"Entrada Renegociação {contrato.codigo_contrato}", 
+                emprestimo=contrato,
+                usuario=usuario_logado,
+                ip_origem=ip_cliente
+            )
 
-        Transacao.objects.create(tipo='PAGAMENTO_ENTRADA', valor=valor_novo_emprestimo, descricao=f"Liq. Saldo Anterior {contrato.codigo_contrato} (Refinanciamento)", emprestimo=contrato)
+        Transacao.objects.create(
+            tipo='PAGAMENTO_ENTRADA', 
+            valor=valor_novo_emprestimo, 
+            descricao=f"Liq. Saldo Anterior {contrato.codigo_contrato} (Refinanciamento)", 
+            emprestimo=contrato,
+            usuario=usuario_logado,
+            ip_origem=ip_cliente
+        )
         
-        transacao_saida = Transacao.objects.create(tipo='EMPRESTIMO_SAIDA', valor=-valor_novo_emprestimo, descricao=f"Renegociação {contrato.codigo_contrato} (Novo Saldo)", emprestimo=None)
+        transacao_saida = Transacao.objects.create(
+            tipo='EMPRESTIMO_SAIDA', 
+            valor=-valor_novo_emprestimo, 
+            descricao=f"Renegociação {contrato.codigo_contrato} (Novo Saldo)", 
+            emprestimo=None,
+            usuario=usuario_logado,
+            ip_origem=ip_cliente
+        )
 
-        # 4. Atualização e Criação
         contrato.parcelas.filter(status=ParcelaStatus.ABERTA).update(status=ParcelaStatus.LIQUIDADA_RENEGOCIACAO)
         contrato.status = EmprestimoStatus.RENEGOCIADO
         contrato.save()
@@ -532,7 +574,15 @@ def pagar_parcial(request, parcela_id: int):
             messages.error(request, "Erro: A nova data deve ser ANTERIOR ao vencimento da próxima parcela.")
             return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
         
-        Transacao.objects.create(tipo='PAGAMENTO_ENTRADA', valor=valor_juros_pago, descricao=f"Pagamento Parcial (Juros) Parc. {parcela.numero} - {contrato.codigo_contrato}", emprestimo=contrato)
+        ip_cliente = get_client_ip(request)
+        Transacao.objects.create(
+            tipo='PAGAMENTO_ENTRADA', 
+            valor=valor_juros_pago, 
+            descricao=f"Pagamento Parcial (Juros) Parc. {parcela.numero} - {contrato.codigo_contrato}", 
+            emprestimo=contrato,
+            usuario=request.user if request.user.is_authenticated else None,
+            ip_origem=ip_cliente
+        )
 
         data_antiga = parcela.vencimento
         parcela.vencimento = nova_data_vencimento

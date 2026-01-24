@@ -1,31 +1,29 @@
 from decimal import Decimal
 from django.utils import timezone
-from financeiro.models import LancamentoFinanceiro  # Assuma modelo em financeiro; ajuste se necessário
+from financeiro.models import Transacao
 
 def registrar_financeiro(contrato):
-    """Registra liberação e recebíveis no livro caixa."""
-    # Exemplo: Débito para liberação líquido
-    # CORRIGIDO: contrato.cliente.nome_completo em vez de contrato.cliente.nome
-    LancamentoFinanceiro.objects.create(
-        data=contrato.data_ativacao,
-        descricao=f'Liberação Adiantamento {contrato.contrato_id} - Cliente {contrato.cliente.nome_completo}',
-        debito=contrato.valor_liquido,
-        credito=Decimal('0.00')
-    )
-    # Crédito para recebíveis bruto
-    LancamentoFinanceiro.objects.create(
-        data=contrato.data_ativacao,
-        descricao=f'Recebíveis Cedidos {contrato.contrato_id}',
-        debito=Decimal('0.00'),
-        credito=contrato.valor_bruto
+    """
+    Registra a saída de caixa referente à liberação do adiantamento.
+    Usa o modelo Transacao para impactar o saldo do Dashboard/Fluxo de Caixa.
+    """
+    # Valor negativo pois é uma saída de dinheiro (pagamento ao cliente)
+    valor_saida = -abs(contrato.valor_liquido)
+    
+    # Define a data do lançamento (usa agora se não tiver data de ativação)
+    data_lancamento = contrato.data_ativacao or timezone.now()
+    
+    Transacao.objects.create(
+        data=data_lancamento,
+        descricao=f'Pagamento Adiantamento {contrato.contrato_id} - {contrato.cliente.nome_completo}',
+        valor=valor_saida,
+        tipo='ANTECIPAÇÃO DE RECEBÍVEIS',  # Usamos 'SAQUE' para representar a saída de recursos
+        transacao_original=None
     )
 
 def registrar_financeiro_ajuste(contrato):
-    """Registra ajustes de renegociação."""
-    ajuste_desconto = contrato.valor_bruto * contrato.taxa_desconto
-    LancamentoFinanceiro.objects.create(
-        data=timezone.now(),
-        descricao=f'Ajuste Renegociação {contrato.contrato_id} - Desconto',
-        debito=Decimal('0.00'),
-        credito=ajuste_desconto
-    )
+    """
+    Registra ajustes financeiros de renegociação, se necessário.
+    """
+    # Mantido vazio para uso futuro, evitando erros de importação
+    pass
