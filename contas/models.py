@@ -1,12 +1,12 @@
 from django.db import models
 from django.utils import timezone
-from decimal import Decimal  # Importação Essencial
+from decimal import Decimal  # Importação essencial para corrigir o erro
 from clientes.models import Cliente
 from emprestimos.models import Emprestimo, Parcela
 
 class ContaCorrente(models.Model):
     cliente = models.OneToOneField(Cliente, on_delete=models.CASCADE, related_name='conta_corrente')
-    # Alterado default para Decimal('0.00') para garantir o tipo correto desde o início
+    # Definimos default como Decimal para evitar que comece como float
     saldo = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     atualizado_em = models.DateTimeField(auto_now=True)
 
@@ -41,7 +41,7 @@ class MovimentacaoConta(models.Model):
     def save(self, *args, **kwargs):
         # Atualiza o saldo da conta ao salvar uma movimentação
         if not self.pk:  # Apenas na criação
-            # CORREÇÃO DO ERRO: Converte explicitamente o saldo para Decimal antes da conta
+            # CORREÇÃO CRÍTICA: Converte explicitamente o saldo para Decimal antes da soma
             saldo_atual = Decimal(str(self.conta.saldo))
             
             if self.tipo == 'CREDITO':

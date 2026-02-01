@@ -41,18 +41,7 @@ class NovoEmprestimoForm(forms.Form):
         widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
     )
 
-    # === CAMPOS NOVOS DA CONTA CORRENTE ===
-    iof_valor = forms.DecimalField(
-        label='IOF / Taxas Iniciais (R$)', 
-        required=False, 
-        initial=Decimal('0.00'),
-        min_value=Decimal('0.00'),
-        decimal_places=2,
-        max_digits=12,
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-        help_text="Taxas descontadas imediatamente do crédito do cliente."
-    )
-
+    # === CAMPO DE SAQUE (Sem IOF) ===
     saque_inicial = forms.DecimalField(
         label='Saque/Transferência Imediata (R$)', 
         required=False, 
@@ -63,7 +52,7 @@ class NovoEmprestimoForm(forms.Form):
         widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
         help_text="Valor retirado fisicamente do caixa. Se R$ 0,00, o valor fica guardado na conta do cliente."
     )
-    # ======================================
+    # ================================
 
     # Regras de atraso
     tem_multa_atraso = forms.BooleanField(
@@ -108,22 +97,18 @@ class NovoEmprestimoForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
         tem_multa = cleaned.get("tem_multa_atraso", False)
-
         multa = cleaned.get("multa_atraso_percent")
+        
         if not tem_multa:
             cleaned["multa_atraso_percent"] = Decimal("0.00")
         else:
-            # se marcou "tem multa" e não preencheu, aplica default 2.00
             if multa is None:
                 cleaned["multa_atraso_percent"] = Decimal("2.00")
 
-        # juros mora: se não preencher, default 1.00
         if cleaned.get("juros_mora_mensal_percent") is None:
             cleaned["juros_mora_mensal_percent"] = Decimal("1.00")
             
-        # Garante que os campos novos não sejam None
-        if cleaned.get("iof_valor") is None:
-            cleaned["iof_valor"] = Decimal("0.00")
+        # Garante que o saque não seja None
         if cleaned.get("saque_inicial") is None:
             cleaned["saque_inicial"] = Decimal("0.00")
 

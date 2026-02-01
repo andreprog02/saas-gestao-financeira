@@ -3,7 +3,7 @@
 from decimal import Decimal
 import io
 
-# Imports de Contas (NOVO)
+# Imports de Contas
 from contas.models import ContaCorrente, MovimentacaoConta
 
 # Django Imports
@@ -243,16 +243,13 @@ def novo_emprestimo_form(request, cliente_id: int):
             if "confirmar_cadastro" in request.POST:
                 valor_solicitado = form.cleaned_data["valor_emprestado"]
                 
-                # Obtém valores extras do formulário (assume 0.00 se não existirem)
-                iof_valor = form.cleaned_data.get("iof_valor") or Decimal("0.00")
+                # Obtém saque_inicial (sem IOF por enquanto)
                 saque_inicial = form.cleaned_data.get("saque_inicial") or Decimal("0.00")
                 
-                # Validação de Saldo da Empresa:
-                # O impacto imediato no caixa é o Saque Inicial.
-                # Se não houver saque inicial (dinheiro fica na conta do cliente), não sai do caixa físico agora.
+                # Validação de Saldo da Empresa (apenas se houver saque físico)
                 impacto_caixa = saque_inicial
-                
                 saldo_atual = calcular_saldo_atual()
+                
                 if saldo_atual < impacto_caixa:
                     messages.error(request, f"Saldo em caixa insuficiente para o saque inicial. Disponível: R$ {saldo_atual:,.2f}. Necessário: R$ {impacto_caixa:,.2f}")
                     return render(request, "emprestimos/novo_form.html", {"cliente": cliente, "form": form, "simulacao": {"parcela_bruta": parcela_bruta, "parcela_aplicada": parcela_aplicada, "total_contrato": total_contrato, "ajuste": ajuste, "parcelas": parcelas}})
@@ -285,18 +282,7 @@ def novo_emprestimo_form(request, cliente_id: int):
                         emprestimo=emprestimo
                     )
 
-                    # 2.2 Débito de IOF/Taxas (se houver)
-                    if iof_valor > 0:
-                        MovimentacaoConta.objects.create(
-                            conta=conta,
-                            tipo='DEBITO',
-                            origem='TAXA',
-                            valor=iof_valor,
-                            descricao=f"IOF/Taxas ref. Contrato {emprestimo.codigo_contrato}",
-                            emprestimo=emprestimo
-                        )
-
-                    # 2.3 Saque Inicial (se o cliente quiser levar dinheiro agora)
+                    # 2.2 Saque Inicial (se o cliente quiser levar dinheiro agora)
                     if saque_inicial > 0:
                         MovimentacaoConta.objects.create(
                             conta=conta,
@@ -308,7 +294,6 @@ def novo_emprestimo_form(request, cliente_id: int):
                         )
 
                         # 3. Transação Financeira (Saída de Caixa da Empresa)
-                        # Só registra saída física se houver saque. O restante fica como "Passivo" na conta do cliente.
                         ip_cliente = get_client_ip(request)
                         Transacao.objects.create(
                             tipo='EMPRESTIMO_SAIDA', 
@@ -318,10 +303,6 @@ def novo_emprestimo_form(request, cliente_id: int):
                             usuario=request.user if request.user.is_authenticated else None,
                             ip_origem=ip_cliente
                         )
-                    else:
-                        # Se não houve saque, o dinheiro está todo na conta virtual. 
-                        # Não gera saída de caixa físico (Transacao), apenas crédito interno (MovimentacaoConta).
-                        pass
 
                 messages.success(request, f"Empréstimo cadastrado com sucesso! Contrato: {codigo}")
                 return redirect("emprestimos:contrato_detalhe", emprestimo_id=emprestimo.id)
