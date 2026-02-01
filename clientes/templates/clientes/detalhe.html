@@ -1,47 +1,83 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <h3 class="mb-0">{{ cliente.nome_completo }}</h3>
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <h3 class="mb-0 text-gray-800">{{ cliente.nome_completo }}</h3>
   <div class="d-flex gap-2">
-    <a class="btn btn-outline-primary" href="{% url 'clientes:editar' cliente.id %}">Editar</a>
-    <a class="btn btn-outline-danger" href="{% url 'clientes:excluir' cliente.id %}">Excluir</a>
+    <a href="{% url 'contas:operacao_saque' %}" class="btn btn-danger shadow-sm">
+        <i class="bi bi-cash-stack"></i> Saque (Cód 05)
+    </a>
+    <a class="btn btn-outline-primary shadow-sm" href="{% url 'clientes:editar' cliente.id %}">
+        <i class="bi bi-pencil"></i> Editar
+    </a>
+    <a class="btn btn-outline-danger shadow-sm" href="{% url 'clientes:excluir' cliente.id %}">
+        <i class="bi bi-trash"></i> Excluir
+    </a>
   </div>
 </div>
 
-<div class="row g-3 mb-4">
+<div class="row g-4 mb-4">
     <div class="col-md-7">
-        <div class="card h-100 p-3 shadow-sm">
-            <h5 class="card-title text-muted mb-3 border-bottom pb-2">Dados Pessoais</h5>
-            <div class="row g-2">
-                <div class="col-md-6"><strong>CPF:</strong> {{ cliente.cpf }}</div>
-                <div class="col-md-6"><strong>Telefone:</strong> {{ cliente.telefone }}</div>
-                <div class="col-md-6"><strong>Doc:</strong> {{ cliente.doc }}</div>
-                <div class="col-md-6"><strong>CEP:</strong> {{ cliente.cep }}</div>
-                <div class="col-12"><strong>Endereço:</strong> {{ cliente.logradouro }}, {{ cliente.numero }} {% if cliente.complemento %} - {{ cliente.complemento }}{% endif %}</div>
-                <div class="col-md-6"><strong>Bairro:</strong> {{ cliente.bairro }}</div>
-                <div class="col-md-6"><strong>Cidade/UF:</strong> {{ cliente.cidade }}/{{ cliente.uf }}</div>
+        <div class="card h-100 shadow border-0">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Dados Pessoais</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="small text-muted mb-1">CPF</label>
+                        <div class="fw-bold">{{ cliente.cpf }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="small text-muted mb-1">Telefone</label>
+                        <div class="fw-bold">{{ cliente.telefone }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="small text-muted mb-1">RG/Doc</label>
+                        <div class="fw-bold">{{ cliente.doc|default:"-" }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="small text-muted mb-1">CEP</label>
+                        <div class="fw-bold">{{ cliente.cep|default:"-" }}</div>
+                    </div>
+                    <div class="col-12">
+                        <label class="small text-muted mb-1">Endereço</label>
+                        <div class="fw-bold">
+                            {{ cliente.logradouro }}, {{ cliente.numero }}
+                            {% if cliente.complemento %} - {{ cliente.complemento }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="small text-muted mb-1">Bairro</label>
+                        <div class="fw-bold">{{ cliente.bairro }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="small text-muted mb-1">Cidade/UF</label>
+                        <div class="fw-bold">{{ cliente.cidade }}/{{ cliente.uf }}</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="col-md-5">
-        <div class="card h-100 border-primary shadow-sm bg-light">
+        <div class="card h-100 shadow border-0 {% if conta.saldo < 0 %}border-danger{% else %}border-primary{% endif %}">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Conta Corrente</h6>
+                <span class="badge bg-light text-dark">Saldo Disponível</span>
+            </div>
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <h5 class="card-title text-primary fw-bold">Conta Corrente</h5>
-                
                 {% if conta %}
-                    <h2 class="display-6 fw-bold {% if conta.saldo >= 0 %}text-success{% else %}text-danger{% endif %} my-3">
+                    <h1 class="display-5 fw-bold mb-0 {% if conta.saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
                         R$ {{ conta.saldo|floatformat:2 }}
-                    </h2>
-                    <p class="text-muted small">Última atualização: {{ conta.atualizado_em|date:"d/m/Y H:i" }}</p>
-                    
-                    <button type="button" class="btn btn-danger w-100 mt-2" data-bs-toggle="modal" data-bs-target="#modalSaque">
-                        Realizar Saque / Débito
-                    </button>
+                    </h1>
+                    <p class="text-muted small mt-2">
+                        <i class="bi bi-clock-history"></i> Última atualização: {{ conta.atualizado_em|date:"d/m/Y H:i" }}
+                    </p>
                 {% else %}
-                    <div class="alert alert-secondary mt-3 mb-0">
-                        <i class="bi bi-info-circle"></i> Este cliente ainda não possui movimentações financeiras. A conta será ativada no primeiro empréstimo.
+                    <div class="alert alert-secondary mb-0">
+                        <i class="bi bi-info-circle"></i> Nenhuma conta ativa.<br>
+                        Faça o primeiro empréstimo para ativar.
                     </div>
                 {% endif %}
             </div>
@@ -50,85 +86,78 @@
 </div>
 
 {% if conta %}
-<div class="card mb-4 shadow-sm">
-  <div class="card-header bg-white fw-bold">
-      Extrato de Movimentações
-  </div>
-  <div class="table-responsive">
-    <table class="table table-striped table-hover mb-0 align-middle">
-      <thead class="table-light">
-        <tr>
-          <th>Data</th>
-          <th>Descrição</th>
-          <th>Origem</th>
-          <th class="text-end">Valor</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for mov in extrato %}
-        <tr>
-          <td class="small">{{ mov.data|date:"d/m/Y H:i" }}</td>
-          <td>{{ mov.descricao }}</td>
-          <td>
-            {% if mov.origem == 'EMPRESTIMO' %}
-                <span class="badge bg-success">Crédito</span>
-            {% elif mov.origem == 'SAQUE' %}
-                <span class="badge bg-danger">Saque</span>
-            {% elif mov.origem == 'PAGAMENTO_PARCELA' %}
-                <span class="badge bg-warning text-dark">Pag. Auto</span>
-            {% elif mov.origem == 'TAXA' %}
-                <span class="badge bg-secondary">Taxa</span>
-            {% else %}
-                <span class="badge bg-light text-dark border">{{ mov.get_origem_display }}</span>
-            {% endif %}
-          </td>
-          <td class="text-end fw-bold {% if mov.tipo == 'CREDITO' %}text-success{% else %}text-danger{% endif %}">
-             {% if mov.tipo == 'DEBITO' %}- {% endif %}R$ {{ mov.valor|floatformat:2 }}
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="4" class="text-center py-3 text-muted">Nenhuma movimentação registrada.</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<div class="card shadow mb-4 border-0">
+    <div class="card-header bg-dark text-white py-3">
+        <h6 class="m-0 fw-bold text-white"><i class="bi bi-list-columns-reverse"></i> Extrato de Movimentações</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Data</th>
+                        <th>Descrição</th>
+                        <th>Origem</th>
+                        <th class="text-end pe-4">Valor (R$)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mov in extrato %}
+                    <tr>
+                        <td class="ps-4 text-nowrap">{{ mov.data|date:"d/m/Y H:i" }}</td>
+                        <td>
+                            <span class="fw-bold">{{ mov.descricao }}</span>
+                            {% if mov.emprestimo %}
+                                <br><small class="text-muted"><i class="bi bi-file-text"></i> Contrato: {{ mov.emprestimo.codigo_contrato }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if mov.origem == 'EMPRESTIMO' %}
+                                <span class="badge bg-primary">Empréstimo</span>
+                            {% elif mov.origem == 'SAQUE' %}
+                                <span class="badge bg-danger">Saque (05)</span>
+                            {% elif mov.origem == 'PAGAMENTO_PARCELA' %}
+                                <span class="badge bg-success">Pagamento</span>
+                            {% elif mov.origem == 'TAXA' %}
+                                <span class="badge bg-secondary">Taxa</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark border">{{ mov.get_origem_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-4">
+                            {% if mov.tipo == 'CREDITO' %}
+                                <span class="text-primary fw-bold">
+                                    + R$ {{ mov.valor|floatformat:2 }}
+                                </span>
+                            {% else %}
+                                <span class="text-danger fw-bold">
+                                    - R$ {{ mov.valor|floatformat:2 }}
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            Nenhuma movimentação registrada.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endif %}
 
-<div class="mt-3 mb-5 d-flex gap-2">
-  <a class="btn btn-primary" href="/emprestimos/novo/?q={{ cliente.cpf }}">Fazer empréstimo para este cliente</a>
-  <a class="btn btn-secondary" href="{% url 'clientes:lista' %}">Voltar</a>
+<div class="d-flex justify-content-start gap-2 mb-5">
+    <a class="btn btn-success btn-lg shadow-sm" href="/emprestimos/novo/?q={{ cliente.cpf }}">
+        <i class="bi bi-plus-circle"></i> Novo Empréstimo
+    </a>
+    <a class="btn btn-secondary btn-lg shadow-sm" href="{% url 'clientes:lista' %}">
+        <i class="bi bi-arrow-left"></i> Voltar
+    </a>
 </div>
-
-{% if conta %}
-<div class="modal fade" id="modalSaque" tabindex="-1" aria-labelledby="modalSaqueLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <form method="POST" action="{% url 'contas:realizar_saque' cliente.id %}">
-      {% csrf_token %}
-      <div class="modal-content">
-        <div class="modal-header bg-danger text-white">
-          <h5 class="modal-title" id="modalSaqueLabel">Novo Saque / Débito</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-            <div class="mb-3">
-                <label class="form-label fw-bold">Valor a Sacar (R$)</label>
-                <input type="number" name="valor" step="0.01" min="0.01" class="form-control form-control-lg" required placeholder="0,00">
-            </div>
-            <div class="alert alert-warning small border-warning">
-                <i class="bi bi-exclamation-triangle-fill"></i> Atenção: Esta ação debitará o saldo do cliente e registrará uma saída imediata no caixa da empresa.
-            </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-danger">Confirmar Saque</button>
-        </div>
-      </div>
-    </form>
-  </div>
-</div>
-{% endif %}
 
 {% endblock %}

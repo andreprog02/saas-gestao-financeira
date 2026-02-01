@@ -2,159 +2,96 @@
 {% load humanize %}
 
 {% block content %}
-<div class="container-fluid">
+<div class="container-fluid mt-4">
     
-    <div class="row mb-4 align-items-center">
-        <div class="col-md-6">
-            <h2 class="text-primary fw-bold">Fluxo de Caixa</h2>
-            <p class="text-muted">Gerencie as entradas e saídas da empresa</p>
-        </div>
-        <div class="col-md-6 text-end">
-            <div class="card bg-success text-white d-inline-block p-3 shadow-sm" style="min_width: 250px;">
-                <h6 class="mb-1">Saldo Atual em Caixa</h6>
-                <h2 class="mb-0 fw-bold">R$ {{ saldo|intcomma }}</h2>
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card shadow border-left-primary py-3">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h5 class="font-weight-bold text-primary text-uppercase mb-2">
+                                <i class="bi bi-lightning-charge-fill"></i> Lançamento Rápido
+                            </h5>
+                            <div class="d-flex align-items-center">
+                                <div class="input-group input-group-lg" style="max-width: 300px;">
+                                    <span class="input-group-text bg-primary text-white fw-bold">CÓD</span>
+                                    <input type="text" id="inputCodigo" class="form-control fw-bold text-center" placeholder="Ex: 01, 05" maxlength="2" autofocus>
+                                    <button class="btn btn-outline-primary" type="button" id="btnVerificarCodigo">
+                                        <i class="bi bi-arrow-right"></i>
+                                    </button>
+                                </div>
+                                <div class="ms-3">
+                                    <span id="descCodigoPreview" class="badge bg-secondary fs-6">Aguardando código...</span>
+                                    <br>
+                                    <small class="text-muted">
+                                        01: Despesas | 02: Aporte | <strong>05: Saque Cliente</strong>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-end border-start">
+                            <div class="text-xs font-weight-bold text-gray-800 text-uppercase mb-1">
+                                Saldo em Caixa (Físico)
+                            </div>
+                            <div class="h3 mb-0 font-weight-bold {% if saldo_atual < 0 %}text-danger{% else %}text-success{% endif %}">
+                                R$ {{ saldo_atual|floatformat:2 }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <button class="btn btn-primary btn-lg me-2" data-bs-toggle="modal" data-bs-target="#modalAporte">
-                <i class="bi bi-arrow-up-circle"></i> Novo Aporte / Entrada
-            </button>
-            <button class="btn btn-danger btn-lg" data-bs-toggle="modal" data-bs-target="#modalSangria">
-                <i class="bi bi-arrow-down-circle"></i> Nova Sangria / Retirada
-            </button>
-        </div>
-    </div>
-
-    <div class="card shadow-sm">
-        <div class="card-header bg-white py-3">
-            <h5 class="mb-0 card-title">Extrato de Movimentações (Mês Atual)</h5>
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center bg-white">
+            <h6 class="m-0 font-weight-bold text-primary">
+                <i class="bi bi-list-ul"></i> Movimentações do Caixa (Últimos 20)
+            </h6>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover table-striped mb-0 align-middle">
                     <thead class="table-light">
                         <tr>
-                            <th>Data/Hora</th>
-                            <th>Tipo</th>
+                            <th class="ps-4">Data</th>
+                            <th>Cód.</th>
                             <th>Descrição</th>
-                            <th>Valor</th>
-                            <th>Usuário</th> <th>Autenticação</th> <th>Ações</th>
+                            <th>Tipo</th>
+                            <th class="text-end pe-4">Valor</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for t in transacoes %}
                         <tr>
+                            <td class="ps-4 small text-muted">{{ t.data|date:"d/m/Y H:i" }}</td>
                             <td>
-                                <div>{{ t.data|date:"d/m/Y" }}</div>
-                                <small class="text-muted">{{ t.data|date:"H:i" }}</small>
+                                {% if t.codigo_operacao %}
+                                    <span class="badge bg-dark">{{ t.codigo_operacao.codigo }}</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark border">-</span>
+                                {% endif %}
                             </td>
+                            <td class="fw-bold text-dark">{{ t.descricao }}</td>
                             <td>
-                                {% if t.tipo == 'DEPOSITO' %}
-                                    <span class="badge bg-success">Depósito</span>
-                                {% elif t.tipo == 'SAQUE' %}
-                                    <span class="badge bg-danger">Saque</span>
+                                {% if t.tipo == 'SAQUE_CC' %}
+                                    <span class="badge bg-danger">Saque C/C</span>
                                 {% elif t.tipo == 'EMPRESTIMO_SAIDA' %}
-                                    <span class="badge bg-warning text-dark">Empréstimo (Saída)</span>
+                                    <span class="badge bg-warning text-dark">Empréstimo</span>
                                 {% elif t.tipo == 'PAGAMENTO_ENTRADA' %}
-                                    <span class="badge bg-info text-dark">Recebimento Parc.</span>
-                                {% elif t.tipo == 'ESTORNO' %}
-                                    <span class="badge bg-secondary">Estorno</span>
+                                    <span class="badge bg-success">Recebimento</span>
                                 {% else %}
                                     <span class="badge bg-secondary">{{ t.get_tipo_display }}</span>
                                 {% endif %}
                             </td>
-                            <td>
-                                {{ t.descricao }}
-                                {% if t.emprestimo %}
-                                    <br>
-                                    <a href="{% url 'emprestimos:contrato_detalhe' t.emprestimo.id %}" class="small text-decoration-none">
-                                        Ver Contrato
-                                    </a>
-                                {% endif %}
-                            </td>
-                            <td class="fw-bold {% if t.valor < 0 %}text-danger{% else %}text-success{% endif %}">
-                                R$ {{ t.valor|intcomma }}
-                            </td>
-                            
-                            <td>
-                                {% if t.usuario %}
-                                    <span class="badge bg-secondary" title="{{ t.usuario.get_full_name }}">{{ t.usuario.username }}</span>
-                                {% else %}
-                                    <span class="text-muted small">Sistema</span>
-                                {% endif %}
-                            </td>
-
-                            <td>
-                                {% if t.codigo_autenticacao %}
-                                    <button type="button" class="btn btn-outline-dark btn-sm" data-bs-toggle="modal" data-bs-target="#modalAuth{{ t.id }}">
-                                        <i class="bi bi-qr-code"></i> Ver
-                                    </button>
-
-                                    <div class="modal fade" id="modalAuth{{ t.id }}" tabindex="-1" aria-hidden="true">
-                                        <div class="modal-dialog">
-                                            <div class="modal-content">
-                                                <div class="modal-header bg-dark text-white">
-                                                    <h5 class="modal-title">Registro de Autenticação</h5>
-                                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                                                </div>
-                                                <div class="modal-body text-center">
-                                                    <p class="small text-muted">Copie o código abaixo para validação:</p>
-                                                    <textarea class="form-control mb-3 font-monospace bg-light" rows="10" readonly id="codArea{{ t.id }}" style="font-size: 0.8rem;">{{ t.codigo_autenticacao }}</textarea>
-                                                    <button class="btn btn-primary w-100" type="button" onclick="copiarCodigo('codArea{{ t.id }}')">
-                                                        <i class="bi bi-clipboard"></i> Copiar Código
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                {% else %}
-                                    <span class="text-muted small">-</span>
-                                {% endif %}
-                            </td>
-
-                            <td>
-                                {% if t.tipo != 'ESTORNO' %}
-                                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEstorno{{ t.id }}">
-                                        Estornar
-                                    </button>
-                                
-                                    <div class="modal fade" id="modalEstorno{{ t.id }}" tabindex="-1" aria-hidden="true">
-                                        <div class="modal-dialog">
-                                            <div class="modal-content">
-                                                <form action="{% url 'financeiro:estornar' t.id %}" method="POST">
-                                                    {% csrf_token %}
-                                                    <div class="modal-header">
-                                                        <h5 class="modal-title">Confirmar Estorno</h5>
-                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                                    </div>
-                                                    <div class="modal-body">
-                                                        <p>Tem certeza que deseja estornar esta transação?</p>
-                                                        <div class="alert alert-warning">
-                                                            <strong>{{ t.descricao }}</strong><br>
-                                                            Valor: R$ {{ t.valor }}
-                                                        </div>
-                                                        <label class="form-label">Senha de Gerente:</label>
-                                                        <input type="password" name="senha" class="form-control" required placeholder="Digite a senha administrativa">
-                                                    </div>
-                                                    <div class="modal-footer">
-                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                                        <button type="submit" class="btn btn-danger">Confirmar Estorno</button>
-                                                    </div>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                {% endif %}
+                            <td class="text-end pe-4 fw-bold {% if t.valor < 0 %}text-danger{% else %}text-success{% endif %}">
+                                R$ {{ t.valor|floatformat:2 }}
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="7" class="text-center py-5 text-muted">
-                                Nenhuma movimentação registrada neste mês.
-                            </td>
+                            <td colspan="5" class="text-center py-4 text-muted">Nenhuma movimentação encontrada.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -164,78 +101,164 @@
     </div>
 </div>
 
-<div class="modal fade" id="modalAporte" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modalGenerico" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST">
-                {% csrf_token %}
-                <input type="hidden" name="tipo" value="DEPOSITO">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title">Novo Aporte / Entrada de Caixa</h5>
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="codigo" id="gen_codigo">
+            
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="gen_titulo">Lançamento</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="gen_badge_tipo" class="alert alert-info fw-bold text-center mb-3"></div>
+                    
                     <div class="mb-3">
-                        <label class="form-label">Valor (R$)</label>
-                        <input type="number" step="0.01" name="valor" class="form-control form-control-lg" required placeholder="0,00">
+                        <label class="form-label fw-bold">Descrição</label>
+                        <input type="text" name="descricao" class="form-control form-control-lg" placeholder="Ex: Compra de Material, Café..." required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Descrição / Motivo</label>
-                        <input type="text" name="descricao" class="form-control" required placeholder="Ex: Aporte dos sócios">
+                        <label class="form-label fw-bold">Valor (R$)</label>
+                        <input type="text" name="valor" class="form-control form-control-lg money" required placeholder="0,00">
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer bg-light">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-success">Confirmar Entrada</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">Confirmar Lançamento</button>
                 </div>
-            </form>
-        </div>
+            </div>
+        </form>
     </div>
 </div>
 
-<div class="modal fade" id="modalSangria" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modalCliente" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST">
-                {% csrf_token %}
-                <input type="hidden" name="tipo" value="SAQUE">
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="codigo" value="05">
+            
+            <div class="modal-content border-danger">
                 <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title">Nova Sangria / Retirada</h5>
+                    <h5 class="modal-title fw-bold"><i class="bi bi-person-dash"></i> CÓD 05 - Saque Conta Corrente</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle"></i> O valor será <strong>subtraído</strong> do caixa.
+                    <div class="alert alert-warning small border-warning text-dark">
+                        <i class="bi bi-exclamation-triangle-fill"></i> 
+                        Esta operação retira dinheiro do <strong>Caixa da Empresa</strong> e debita o saldo da <strong>Conta do Cliente</strong>.
                     </div>
+
                     <div class="mb-3">
-                        <label class="form-label">Valor (R$)</label>
-                        <input type="number" step="0.01" name="valor" class="form-control form-control-lg" required placeholder="0,00">
+                        <label class="form-label fw-bold">1. Selecione o Cliente</label>
+                        <select name="cliente_id" id="selectCliente05" class="form-select select2" style="width: 100%;" required>
+                            <option value="">Buscar cliente...</option>
+                            {% for c in clientes %}
+                            <option value="{{ c.id }}">{{ c.nome_completo }} (CPF: {{ c.cpf }})</option>
+                            {% endfor %}
+                        </select>
                     </div>
+
                     <div class="mb-3">
-                        <label class="form-label">Descrição / Motivo</label>
-                        <input type="text" name="descricao" class="form-control" required placeholder="Ex: Pagamento de conta de luz">
+                        <label class="form-label fw-bold">2. Descrição (Opcional)</label>
+                        <input type="text" name="descricao" class="form-control" placeholder="Obs sobre o saque..." value="Saque em Espécie">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-danger">3. Valor do Saque (R$)</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text bg-danger text-white">R$</span>
+                            <input type="text" name="valor" class="form-control money text-danger fw-bold" required placeholder="0,00">
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer bg-light">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-danger">Confirmar Saída</button>
+                    <button type="submit" class="btn btn-danger fw-bold px-4">Confirmar Saque</button>
                 </div>
-            </form>
-        </div>
+            </div>
+        </form>
     </div>
 </div>
 
 <script>
-    function copiarCodigo(elementId) {
-        var copyText = document.getElementById(elementId);
-        copyText.select();
-        copyText.setSelectionRange(0, 99999); // Para mobile
-        navigator.clipboard.writeText(copyText.value).then(function() {
-            alert("Código de autenticação copiado com sucesso!");
-        }, function(err) {
-            alert("Erro ao copiar código: " + err);
+    document.addEventListener("DOMContentLoaded", function() {
+        // 1. Recebe a lista de códigos do Backend (Django)
+        const codigosOperacao = {{ codigos_json|safe }};
+        
+        const inputCodigo = document.getElementById('inputCodigo');
+        const preview = document.getElementById('descCodigoPreview');
+        const btnVerificar = document.getElementById('btnVerificarCodigo');
+
+        // Inicializa Select2 no Modal 05 (com correção para Modal Bootstrap)
+        $('#selectCliente05').select2({
+            dropdownParent: $('#modalCliente'),
+            placeholder: "Digite o nome do cliente...",
+            allowClear: true,
+            width: '100%'
         });
-    }
+
+        // Evento: Digitação no campo de código
+        inputCodigo.addEventListener('keyup', function() {
+            const val = this.value;
+            const op = codigosOperacao.find(c => c.codigo === val);
+            
+            if (op) {
+                // Código Encontrado
+                preview.textContent = op.descricao;
+                preview.className = "badge fs-6 " + (op.tipo === 'S' ? 'bg-danger' : 'bg-success');
+                
+                // Se tiver 2 dígitos, tenta processar (opcional, ou espera Enter)
+            } else {
+                // Código Inválido
+                preview.textContent = "Código não encontrado";
+                preview.className = "badge bg-secondary fs-6";
+            }
+        });
+
+        // Evento: Enter ou Clique no Botão
+        function processarCodigo() {
+            const val = inputCodigo.value;
+            const op = codigosOperacao.find(c => c.codigo === val);
+
+            if (!op) {
+                alert("Código de operação inválido!");
+                inputCodigo.focus();
+                return;
+            }
+
+            if (op.codigo === '05') {
+                // Lógica Específica para Cód 05 (Cliente)
+                var modalCliente = new bootstrap.Modal(document.getElementById('modalCliente'));
+                modalCliente.show();
+            } else {
+                // Lógica Genérica (01, 02...)
+                document.getElementById('gen_codigo').value = op.codigo;
+                document.getElementById('gen_titulo').innerText = `Operação ${op.codigo}`;
+                
+                const badge = document.getElementById('gen_badge_tipo');
+                badge.innerText = op.descricao;
+                badge.className = "alert fw-bold text-center mb-3 " + (op.tipo === 'S' ? 'alert-danger' : 'alert-success');
+                
+                var modalGenerico = new bootstrap.Modal(document.getElementById('modalGenerico'));
+                modalGenerico.show();
+            }
+            
+            // Limpa o input
+            inputCodigo.value = '';
+            preview.textContent = 'Aguardando código...';
+            preview.className = "badge bg-secondary fs-6";
+        }
+
+        btnVerificar.addEventListener('click', processarCodigo);
+        inputCodigo.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') processarCodigo();
+        });
+        
+        // Foca no input ao abrir a tela
+        inputCodigo.focus();
+    });
 </script>
 
 {% endblock %}

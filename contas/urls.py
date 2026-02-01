@@ -4,5 +4,5 @@ from . import views
 app_name = 'contas'
 
 urlpatterns = [
-    path('sacar/<int:cliente_id>/', views.realizar_saque, name='realizar_saque'),
+    path('operacao/saque/', views.operacao_saque, name='operacao_saque'),
 ]

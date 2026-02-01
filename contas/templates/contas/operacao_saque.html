@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            
+            <div class="card shadow-lg border-danger">
+                <div class="card-header bg-danger text-white d-flex align-items-center justify-content-between">
+                    <h4 class="mb-0">
+                        <i class="bi bi-cash-stack"></i> Operação 05 - Saque
+                    </h4>
+                    <span class="badge bg-white text-danger">Débito em Conta</span>
+                </div>
+                
+                <div class="card-body p-4">
+                    
+                    <div class="alert alert-warning border-warning small mb-4">
+                        <i class="bi bi-exclamation-triangle-fill"></i> 
+                        <strong>Atenção:</strong> Esta operação retira dinheiro físico do <strong>Caixa da Empresa</strong> e debita o saldo da <strong>Conta Corrente</strong> do cliente simultaneamente.
+                    </div>
+
+                    <form method="POST" autocomplete="off">
+                        {% csrf_token %}
+
+                        <div class="mb-4">
+                            <label for="cliente_id" class="form-label fw-bold">1. Selecionar Cliente</label>
+                            <select name="cliente_id" id="cliente_id" class="form-select form-select-lg" required>
+                                <option value="" selected disabled>Escolha o cliente...</option>
+                                {% for cliente in clientes %}
+                                <option value="{{ cliente.id }}">
+                                    {{ cliente.nome_completo }} (CPF: {{ cliente.cpf }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">
+                                Selecione quem está retirando o valor.
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="valor" class="form-label fw-bold">2. Valor do Saque</label>
+                            <div class="input-group input-group-lg">
+                                <span class="input-group-text bg-light text-danger fw-bold">R$</span>
+                                <input type="text" name="valor" id="valor" class="form-control money text-danger fw-bold" placeholder="0,00" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="descricao" class="form-label fw-bold">3. Descrição / Histórico</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-card-text"></i></span>
+                                <input type="text" name="descricao" id="descricao" class="form-control" value="Saque em Espécie (Cód 05)">
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-danger btn-lg shadow-sm">
+                                <i class="bi bi-check-circle-fill"></i> CONFIRMAR SAQUE
+                            </button>
+                            <a href="{% url 'clientes:lista' %}" class="btn btn-outline-secondary">
+                                Cancelar e Voltar
+                            </a>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Tenta focar no select de clientes
+        const clienteSelect = document.getElementById('cliente_id');
+        if(clienteSelect) {
+            clienteSelect.focus();
+        }
+    });
+</script>
+{% endblock %}

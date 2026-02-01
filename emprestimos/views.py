@@ -3,7 +3,7 @@
 from decimal import Decimal
 import io
 
-# Imports de Contas
+# Imports de Contas (ESSENCIAL PARA A CONTA CORRENTE)
 from contas.models import ContaCorrente, MovimentacaoConta
 
 # Django Imports
@@ -243,16 +243,16 @@ def novo_emprestimo_form(request, cliente_id: int):
             if "confirmar_cadastro" in request.POST:
                 valor_solicitado = form.cleaned_data["valor_emprestado"]
                 
-                # Obtém saque_inicial (sem IOF por enquanto)
+                # Obtém saque_inicial (Opcional, se o cliente quiser sacar na hora)
                 saque_inicial = form.cleaned_data.get("saque_inicial") or Decimal("0.00")
                 
-                # Validação de Saldo da Empresa (apenas se houver saque físico)
-                impacto_caixa = saque_inicial
-                saldo_atual = calcular_saldo_atual()
-                
-                if saldo_atual < impacto_caixa:
-                    messages.error(request, f"Saldo em caixa insuficiente para o saque inicial. Disponível: R$ {saldo_atual:,.2f}. Necessário: R$ {impacto_caixa:,.2f}")
-                    return render(request, "emprestimos/novo_form.html", {"cliente": cliente, "form": form, "simulacao": {"parcela_bruta": parcela_bruta, "parcela_aplicada": parcela_aplicada, "total_contrato": total_contrato, "ajuste": ajuste, "parcelas": parcelas}})
+                # Se houver saque, verifica o caixa da empresa
+                if saque_inicial > 0:
+                    impacto_caixa = saque_inicial
+                    saldo_atual = calcular_saldo_atual()
+                    if saldo_atual < impacto_caixa:
+                        messages.error(request, f"Saldo em caixa insuficiente para o saque inicial. Disponível: R$ {saldo_atual:,.2f}. Necessário: R$ {impacto_caixa:,.2f}")
+                        return render(request, "emprestimos/novo_form.html", {"cliente": cliente, "form": form, "simulacao": {"parcela_bruta": parcela_bruta, "parcela_aplicada": parcela_aplicada, "total_contrato": total_contrato, "ajuste": ajuste, "parcelas": parcelas}})
 
                 with transaction.atomic():
                     codigo = gerar_codigo_contrato()
@@ -269,10 +269,10 @@ def novo_emprestimo_form(request, cliente_id: int):
                     
                     ContratoLog.objects.create(contrato=emprestimo, acao=ContratoLog.Acao.CRIADO, usuario=request.user if request.user.is_authenticated else None, motivo="Cadastro inicial")
 
-                    # 2. Gestão da Conta Corrente (NOVA LÓGICA)
+                    # 2. Gestão da Conta Corrente
                     conta, _ = ContaCorrente.objects.get_or_create(cliente=cliente)
 
-                    # 2.1 Crédito do Valor do Empréstimo na Conta do Cliente
+                    # 2.1 CRÉDITO do Valor do Empréstimo na Conta do Cliente (AZUL no extrato)
                     MovimentacaoConta.objects.create(
                         conta=conta,
                         tipo='CREDITO',
@@ -282,8 +282,9 @@ def novo_emprestimo_form(request, cliente_id: int):
                         emprestimo=emprestimo
                     )
 
-                    # 2.2 Saque Inicial (se o cliente quiser levar dinheiro agora)
+                    # 2.2 SAQUE INICIAL (Se o cliente pediu para retirar na hora)
                     if saque_inicial > 0:
+                        # Debita da conta do cliente (VERMELHO no extrato)
                         MovimentacaoConta.objects.create(
                             conta=conta,
                             tipo='DEBITO',
@@ -293,7 +294,7 @@ def novo_emprestimo_form(request, cliente_id: int):
                             emprestimo=emprestimo
                         )
 
-                        # 3. Transação Financeira (Saída de Caixa da Empresa)
+                        # Registra no Livro Caixa (Saída da Empresa)
                         ip_cliente = get_client_ip(request)
                         Transacao.objects.create(
                             tipo='EMPRESTIMO_SAIDA', 
