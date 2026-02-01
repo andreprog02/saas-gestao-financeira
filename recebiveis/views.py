@@ -1,10 +1,13 @@
+from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.utils import timezone
+from django.db import transaction
+
 from .models import ContratoRecebivel, ItemRecebivel
 from .forms import ContratoRecebivelForm, ItemRecebivelForm, AtivacaoForm, RenegociacaoForm
-from .services import registrar_financeiro
-from financeiro.models import Transacao  # Importação NECESSÁRIA para liquidação
+from financeiro.models import Transacao, calcular_saldo_atual
+from contas.models import ContaCorrente, MovimentacaoConta
 
 def lista_contratos(request):
     # Alterado para prefetch_related para carregar os itens no modal sem travar o banco de dados
@@ -72,6 +75,10 @@ def excluir_item(request, item_id):
 
 def ativar_contrato(request, contrato_id):
     contrato = get_object_or_404(ContratoRecebivel, id=contrato_id)
+    
+    # Recalcula para garantir valores atualizados antes de ativar
+    contrato.calcular_valores()
+
     if contrato.status != 'simulado':
         messages.error(request, 'Contrato já ativado ou renegociado.')
         return redirect('lista_contratos')
@@ -80,20 +87,75 @@ def ativar_contrato(request, contrato_id):
         form = AtivacaoForm(request.POST)
         if form.is_valid():
             if form.cleaned_data['senha'] == '1234':
-                contrato.status = 'ativo'
-                contrato.data_ativacao = timezone.now()
-                contrato.save()
-                registrar_financeiro(contrato)
-                messages.success(request, f'Contrato {contrato.contrato_id} ativado.')
+                
+                saque_inicial = form.cleaned_data.get('saque_inicial') or Decimal('0.00')
+                
+                # Validação de Saldo da Empresa (apenas se houver saque físico)
+                if saque_inicial > 0:
+                    saldo_caixa = calcular_saldo_atual()
+                    if saldo_caixa < saque_inicial:
+                        messages.error(request, f'Saldo em caixa insuficiente. Disponível: R$ {saldo_caixa:,.2f}')
+                        return render(request, 'recebiveis/ativar.html', {'form': form, 'contrato': contrato})
+
+                with transaction.atomic():
+                    # 1. Atualiza status
+                    contrato.status = 'ativo'
+                    contrato.data_ativacao = timezone.now()
+                    contrato.save()
+                    
+                    # 2. Gestão da Conta Corrente
+                    conta, _ = ContaCorrente.objects.get_or_create(cliente=contrato.cliente)
+
+                    # 2.1 Crédito do Valor Bruto (Total dos Cheques/Títulos)
+                    MovimentacaoConta.objects.create(
+                        conta=conta,
+                        tipo='CREDITO',
+                        origem='EMPRESTIMO', # Origem genérica para entrada de crédito concedido
+                        valor=contrato.valor_bruto,
+                        descricao=f"Crédito Antecipação {contrato.contrato_id} ({contrato.itens.count()} títulos)",
+                    )
+
+                    # 2.2 Débito do Desconto (Taxas/Juros)
+                    desconto = contrato.valor_bruto - contrato.valor_liquido
+                    if desconto > 0:
+                        MovimentacaoConta.objects.create(
+                            conta=conta,
+                            tipo='DEBITO',
+                            origem='TAXA',
+                            valor=desconto,
+                            descricao=f"Deságio/Taxas Antecipação {contrato.contrato_id}"
+                        )
+
+                    # 2.3 Saque Inicial (Opcional)
+                    if saque_inicial > 0:
+                        MovimentacaoConta.objects.create(
+                            conta=conta,
+                            tipo='DEBITO',
+                            origem='SAQUE',
+                            valor=saque_inicial,
+                            descricao=f"Saque na Antecipação {contrato.contrato_id}"
+                        )
+
+                        # 3. Transação Financeira (Saída do Caixa Físico)
+                        Transacao.objects.create(
+                            tipo='ANTECIPAÇÃO DE RECEBÍVEIS',
+                            valor=-saque_inicial, # Valor negativo = saída
+                            descricao=f'Saque Adiantamento {contrato.contrato_id} - {contrato.cliente.nome_completo}',
+                            data=timezone.now()
+                        )
+
+                messages.success(request, f'Contrato {contrato.contrato_id} ativado. Valores lançados na conta do cliente.')
                 return redirect('lista_contratos')
             else:
                 messages.error(request, 'Senha incorreta.')
     else:
-        form = AtivacaoForm()
+        # Sugere o valor líquido total como saque inicial por padrão
+        form = AtivacaoForm(initial={'saque_inicial': contrato.valor_liquido})
+    
     return render(request, 'recebiveis/ativar.html', {'form': form, 'contrato': contrato})
 
 # ========================================================
-# NOVAS FUNÇÕES DE LIQUIDAÇÃO (Adicionadas agora)
+# NOVAS FUNÇÕES DE LIQUIDAÇÃO
 # ========================================================
 
 def liquidar_item(request, item_id):
@@ -112,7 +174,7 @@ def liquidar_item(request, item_id):
         # Atualiza status do Contrato se tudo estiver pago
         item.contrato.atualizar_status()
 
-        # Registra no Financeiro (Entrada de Dinheiro)
+        # Registra no Financeiro (Entrada de Dinheiro - Compensação)
         Transacao.objects.create(
             tipo='PAGAMENTO_ENTRADA',
             valor=item.valor,

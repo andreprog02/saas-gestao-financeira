@@ -32,6 +32,14 @@ class ItemRecebivelForm(forms.ModelForm):
 
 class AtivacaoForm(forms.Form):
     senha = forms.CharField(widget=forms.PasswordInput, label='Senha para Ativação')
+    saque_inicial = forms.DecimalField(
+        label='Saque Inicial (Opcional)', 
+        required=False, 
+        initial=0.00,
+        min_value=0.00,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+        help_text="Valor a ser retirado em dinheiro/transferência imediatamente. Se R$ 0,00, o valor líquido fica integralmente na Conta Corrente do cliente."
+    )
 
 class RenegociacaoForm(forms.ModelForm):
     class Meta:

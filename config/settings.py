@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "financeiro",
     "recebiveis",
     "emprestimos",
+    "contas",
     "cobranca",  # <--- App de Cobrança adicionado aqui
 ]
 

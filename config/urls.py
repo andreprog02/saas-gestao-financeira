@@ -24,6 +24,7 @@ urlpatterns = [
     path("emprestimos/", include("emprestimos.urls")),
     path('recebiveis/', include('recebiveis.urls')),
     path('cobranca/', include('cobranca.urls')),
+    path('contas/', include('contas.urls')), # <--- ADICIONE ISTO
     path("financeiro/", include("financeiro.urls")),
     
 ]

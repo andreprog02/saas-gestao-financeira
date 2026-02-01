@@ -3,14 +3,12 @@ from django.core.validators import MinValueValidator
 from decimal import Decimal
 from clientes.models import Cliente
 
-
 class SelecionarClienteForm(forms.Form):
     q = forms.CharField(
         label="Buscar cliente (Nome ou CPF)",
         required=True,
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Ex: André ou 123.456.789-00"}),
     )
-
 
 class NovoEmprestimoForm(forms.Form):
     cliente_id = forms.IntegerField(widget=forms.HiddenInput())
@@ -43,6 +41,58 @@ class NovoEmprestimoForm(forms.Form):
         widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
     )
 
+    # === CAMPOS NOVOS DA CONTA CORRENTE ===
+    iof_valor = forms.DecimalField(
+        label='IOF / Taxas Iniciais (R$)', 
+        required=False, 
+        initial=Decimal('0.00'),
+        min_value=Decimal('0.00'),
+        decimal_places=2,
+        max_digits=12,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+        help_text="Taxas descontadas imediatamente do crédito do cliente."
+    )
+
+    saque_inicial = forms.DecimalField(
+        label='Saque/Transferência Imediata (R$)', 
+        required=False, 
+        initial=Decimal('0.00'),
+        min_value=Decimal('0.00'),
+        decimal_places=2,
+        max_digits=12,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+        help_text="Valor retirado fisicamente do caixa. Se R$ 0,00, o valor fica guardado na conta do cliente."
+    )
+    # ======================================
+
+    # Regras de atraso
+    tem_multa_atraso = forms.BooleanField(
+        label="Cobrar multa por atraso?",
+        required=False, 
+        initial=True,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+    
+    multa_atraso_percent = forms.DecimalField(
+        label="Multa (%)",
+        required=False, 
+        initial=Decimal("2.00"),
+        min_value=Decimal("0.00"), 
+        decimal_places=2, 
+        max_digits=5,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
+    )
+    
+    juros_mora_mensal_percent = forms.DecimalField(
+        label="Juros de Mora (% ao mês)",
+        required=False, 
+        initial=Decimal("1.00"),
+        min_value=Decimal("0.00"), 
+        decimal_places=2, 
+        max_digits=5,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
+    )
+
     observacoes = forms.CharField(
         label="Observações",
         required=False,
@@ -54,20 +104,6 @@ class NovoEmprestimoForm(forms.Form):
         if not Cliente.objects.filter(id=cid).exists():
             raise forms.ValidationError("Cliente inválido.")
         return cid
-
-
-class NovoEmprestimoForm(forms.Form):
-    valor_emprestado = forms.DecimalField(min_value=Decimal("0.01"), decimal_places=2, max_digits=12)
-    qtd_parcelas = forms.IntegerField(min_value=1, max_value=360)
-    taxa_juros_mensal = forms.DecimalField(min_value=Decimal("0.00"), decimal_places=2, max_digits=6)
-    primeiro_vencimento = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
-
-    # Regras de atraso
-    tem_multa_atraso = forms.BooleanField(required=False, initial=True)
-    multa_atraso_percent = forms.DecimalField(required=False, initial=Decimal("2.00"),
-                                              min_value=Decimal("0.00"), decimal_places=2, max_digits=5)
-    juros_mora_mensal_percent = forms.DecimalField(required=False, initial=Decimal("1.00"),
-                                                   min_value=Decimal("0.00"), decimal_places=2, max_digits=5)
 
     def clean(self):
         cleaned = super().clean()
@@ -84,5 +120,11 @@ class NovoEmprestimoForm(forms.Form):
         # juros mora: se não preencher, default 1.00
         if cleaned.get("juros_mora_mensal_percent") is None:
             cleaned["juros_mora_mensal_percent"] = Decimal("1.00")
+            
+        # Garante que os campos novos não sejam None
+        if cleaned.get("iof_valor") is None:
+            cleaned["iof_valor"] = Decimal("0.00")
+        if cleaned.get("saque_inicial") is None:
+            cleaned["saque_inicial"] = Decimal("0.00")
 
         return cleaned
