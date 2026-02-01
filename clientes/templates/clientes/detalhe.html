@@ -1,163 +1,101 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
+{% load humanize %} {# Tenta carregar humanize, mas floatformat funciona sem ele #}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-between mb-4">
-  <h3 class="mb-0 text-gray-800">{{ cliente.nome_completo }}</h3>
-  <div class="d-flex gap-2">
-    <a href="{% url 'contas:operacao_saque' %}" class="btn btn-danger shadow-sm">
-        <i class="bi bi-cash-stack"></i> Saque (Cód 05)
-    </a>
-    <a class="btn btn-outline-primary shadow-sm" href="{% url 'clientes:editar' cliente.id %}">
-        <i class="bi bi-pencil"></i> Editar
-    </a>
-    <a class="btn btn-outline-danger shadow-sm" href="{% url 'clientes:excluir' cliente.id %}">
-        <i class="bi bi-trash"></i> Excluir
-    </a>
-  </div>
-</div>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>{{ cliente.nome_completo }}</h1>
+        <div>
+            <a href="{% url 'clientes:editar' cliente.id %}" class="btn btn-warning">
+                <i class="fas fa-edit"></i> Editar
+            </a>
+            <a href="{% url 'clientes:lista' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+        </div>
+    </div>
 
-<div class="row g-4 mb-4">
-    <div class="col-md-7">
-        <div class="card h-100 shadow border-0">
-            <div class="card-header bg-white py-3">
-                <h6 class="m-0 font-weight-bold text-primary">Dados Pessoais</h6>
-            </div>
-            <div class="card-body">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="small text-muted mb-1">CPF</label>
-                        <div class="fw-bold">{{ cliente.cpf }}</div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="small text-muted mb-1">Telefone</label>
-                        <div class="fw-bold">{{ cliente.telefone }}</div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="small text-muted mb-1">RG/Doc</label>
-                        <div class="fw-bold">{{ cliente.doc|default:"-" }}</div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="small text-muted mb-1">CEP</label>
-                        <div class="fw-bold">{{ cliente.cep|default:"-" }}</div>
-                    </div>
-                    <div class="col-12">
-                        <label class="small text-muted mb-1">Endereço</label>
-                        <div class="fw-bold">
-                            {{ cliente.logradouro }}, {{ cliente.numero }}
-                            {% if cliente.complemento %} - {{ cliente.complemento }}{% endif %}
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="small text-muted mb-1">Bairro</label>
-                        <div class="fw-bold">{{ cliente.bairro }}</div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="small text-muted mb-1">Cidade/UF</label>
-                        <div class="fw-bold">{{ cliente.cidade }}/{{ cliente.uf }}</div>
-                    </div>
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Dados Cadastrais</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>CPF:</strong> {{ cliente.cpf }}</p>
+                    <p><strong>Email:</strong> {{ cliente.email|default:"-" }}</p>
+                    <p><strong>Telefone:</strong> {{ cliente.telefone|default:"-" }}</p>
+                    <p><strong>Endereço:</strong><br>
+                       {{ cliente.logradouro }}, {{ cliente.numero }}<br>
+                       {{ cliente.bairro }} - {{ cliente.cidade }}/{{ cliente.uf }}
+                    </p>
+                    <p><strong>Profissão:</strong> {{ cliente.profissao|default:"-" }}</p>
+                    <p><strong>Renda:</strong> R$ {{ cliente.renda_mensal|floatformat:2 }}</p>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="col-md-5">
-        <div class="card h-100 shadow border-0 {% if conta.saldo < 0 %}border-danger{% else %}border-primary{% endif %}">
-            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                <h6 class="m-0 font-weight-bold text-primary">Conta Corrente</h6>
-                <span class="badge bg-light text-dark">Saldo Disponível</span>
-            </div>
-            <div class="card-body text-center d-flex flex-column justify-content-center">
-                {% if conta %}
-                    <h1 class="display-5 fw-bold mb-0 {% if conta.saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        R$ {{ conta.saldo|floatformat:2 }}
-                    </h1>
-                    <p class="text-muted small mt-2">
-                        <i class="bi bi-clock-history"></i> Última atualização: {{ conta.atualizado_em|date:"d/m/Y H:i" }}
-                    </p>
-                {% else %}
-                    <div class="alert alert-secondary mb-0">
-                        <i class="bi bi-info-circle"></i> Nenhuma conta ativa.<br>
-                        Faça o primeiro empréstimo para ativar.
+        <div class="col-md-8">
+            
+            <div class="card mb-4 shadow-sm">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="text-muted mb-0">Saldo em Conta Corrente</h5>
+                        <small>Vinculado aos contratos de empréstimo/recebíveis</small>
                     </div>
-                {% endif %}
+                    <div class="text-end">
+                        {% if conta %}
+                            <h2 class="{% if conta.saldo >= 0 %}text-success{% else %}text-danger{% endif %} mb-0">
+                                R$ {{ conta.saldo|floatformat:2 }}
+                            </h2>
+                        {% else %}
+                            <h2 class="text-muted mb-0">R$ 0,00</h2>
+                            <small class="text-warning">Conta não criada</small>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
+
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-history"></i> Extrato de Movimentações (Últimas 50)</h5>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Descrição</th>
+                                <th>Origem</th>
+                                <th class="text-end">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for mov in extrato %}
+                            <tr>
+                                <td>{{ mov.data|date:"d/m/Y H:i" }}</td>
+                                <td>{{ mov.descricao }}</td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ mov.get_origem_display }}</span>
+                                </td>
+                                <td class="text-end fw-bold {% if mov.tipo == 'CREDITO' %}text-success{% else %}text-danger{% endif %}">
+                                    {% if mov.tipo == 'CREDITO' %}+{% else %}-{% endif %}
+                                    R$ {{ mov.valor|floatformat:2 }}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center py-3 text-muted">
+                                    Nenhuma movimentação registrada.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
-
-{% if conta %}
-<div class="card shadow mb-4 border-0">
-    <div class="card-header bg-dark text-white py-3">
-        <h6 class="m-0 fw-bold text-white"><i class="bi bi-list-columns-reverse"></i> Extrato de Movimentações</h6>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th class="ps-4">Data</th>
-                        <th>Descrição</th>
-                        <th>Origem</th>
-                        <th class="text-end pe-4">Valor (R$)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for mov in extrato %}
-                    <tr>
-                        <td class="ps-4 text-nowrap">{{ mov.data|date:"d/m/Y H:i" }}</td>
-                        <td>
-                            <span class="fw-bold">{{ mov.descricao }}</span>
-                            {% if mov.emprestimo %}
-                                <br><small class="text-muted"><i class="bi bi-file-text"></i> Contrato: {{ mov.emprestimo.codigo_contrato }}</small>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if mov.origem == 'EMPRESTIMO' %}
-                                <span class="badge bg-primary">Empréstimo</span>
-                            {% elif mov.origem == 'SAQUE' %}
-                                <span class="badge bg-danger">Saque (05)</span>
-                            {% elif mov.origem == 'PAGAMENTO_PARCELA' %}
-                                <span class="badge bg-success">Pagamento</span>
-                            {% elif mov.origem == 'TAXA' %}
-                                <span class="badge bg-secondary">Taxa</span>
-                            {% else %}
-                                <span class="badge bg-light text-dark border">{{ mov.get_origem_display }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end pe-4">
-                            {% if mov.tipo == 'CREDITO' %}
-                                <span class="text-primary fw-bold">
-                                    + R$ {{ mov.valor|floatformat:2 }}
-                                </span>
-                            {% else %}
-                                <span class="text-danger fw-bold">
-                                    - R$ {{ mov.valor|floatformat:2 }}
-                                </span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="4" class="text-center py-5 text-muted">
-                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                            Nenhuma movimentação registrada.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<div class="d-flex justify-content-start gap-2 mb-5">
-    <a class="btn btn-success btn-lg shadow-sm" href="/emprestimos/novo/?q={{ cliente.cpf }}">
-        <i class="bi bi-plus-circle"></i> Novo Empréstimo
-    </a>
-    <a class="btn btn-secondary btn-lg shadow-sm" href="{% url 'clientes:lista' %}">
-        <i class="bi bi-arrow-left"></i> Voltar
-    </a>
-</div>
-
 {% endblock %}

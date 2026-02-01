@@ -106,27 +106,18 @@ def ativar_contrato(request, contrato_id):
                     # 2. Gestão da Conta Corrente
                     conta, _ = ContaCorrente.objects.get_or_create(cliente=contrato.cliente)
 
-                    # 2.1 Crédito do Valor Bruto (Total dos Cheques/Títulos)
+                    # === ALTERAÇÃO: LANÇAR O VALOR LÍQUIDO DIRETAMENTE ===
+                    
+                    # Lança crédito do valor LÍQUIDO (já descontado taxas)
                     MovimentacaoConta.objects.create(
                         conta=conta,
                         tipo='CREDITO',
-                        origem='EMPRESTIMO', # Origem genérica para entrada de crédito concedido
-                        valor=contrato.valor_bruto,
-                        descricao=f"Crédito Antecipação {contrato.contrato_id} ({contrato.itens.count()} títulos)",
+                        origem='ANTECIPACAO',
+                        valor=contrato.valor_liquido,
+                        descricao=f"Crédito Antecipação {contrato.contrato_id} (Líquido)",
                     )
 
-                    # 2.2 Débito do Desconto (Taxas/Juros)
-                    desconto = contrato.valor_bruto - contrato.valor_liquido
-                    if desconto > 0:
-                        MovimentacaoConta.objects.create(
-                            conta=conta,
-                            tipo='DEBITO',
-                            origem='TAXA',
-                            valor=desconto,
-                            descricao=f"Deságio/Taxas Antecipação {contrato.contrato_id}"
-                        )
-
-                    # 2.3 Saque Inicial (Opcional)
+                    # 2.3 Saque Inicial (Opcional - se o cliente levou dinheiro em mãos)
                     if saque_inicial > 0:
                         MovimentacaoConta.objects.create(
                             conta=conta,
@@ -136,7 +127,7 @@ def ativar_contrato(request, contrato_id):
                             descricao=f"Saque na Antecipação {contrato.contrato_id}"
                         )
 
-                        # 3. Transação Financeira (Saída do Caixa Físico)
+                        # 3. Transação Financeira (Saída do Caixa Físico da Empresa)
                         Transacao.objects.create(
                             tipo='ANTECIPAÇÃO DE RECEBÍVEIS',
                             valor=-saque_inicial, # Valor negativo = saída
@@ -144,7 +135,7 @@ def ativar_contrato(request, contrato_id):
                             data=timezone.now()
                         )
 
-                messages.success(request, f'Contrato {contrato.contrato_id} ativado. Valores lançados na conta do cliente.')
+                messages.success(request, f'Contrato {contrato.contrato_id} ativado. Valor LÍQUIDO lançado na conta do cliente.')
                 return redirect('lista_contratos')
             else:
                 messages.error(request, 'Senha incorreta.')
