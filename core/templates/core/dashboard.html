@@ -1,5 +1,147 @@
 {% extends "base.html" %}
+{% load humanize %}
+
 {% block content %}
-<h1>Dashboard</h1>
-<p>Projeto criado com sucesso ✅</p>
+<div class="container-fluid mt-2">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-dark fw-bold">Resumo Executivo</h1>
+        <span class="text-muted small">Atualizado em: {{ hoje|date:"d/m/Y" }}</span>
+    </div>
+
+    <div class="row">
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-start border-primary border-4 shadow-sm h-100 py-2">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Saldo em Caixa</div>
+                            <div class="h4 mb-0 font-weight-bold {% if saldo_caixa < 0 %}text-danger{% else %}text-success{% endif %}">
+                                R$ {{ saldo_caixa|floatformat:2|intcomma }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-wallet2 fs-2 text-secondary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-start border-success border-4 shadow-sm h-100 py-2">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Empréstimos ({{ total_emprestimos_qtd }})</div>
+                            <div class="h4 mb-0 font-weight-bold text-dark">
+                                R$ {{ total_emprestimos_valor|floatformat:2|intcomma }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-bank fs-2 text-secondary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-start border-info border-4 shadow-sm h-100 py-2">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Recebíveis ({{ total_recebiveis_qtd }})</div>
+                            <div class="h4 mb-0 font-weight-bold text-dark">
+                                R$ {{ total_recebiveis_valor|floatformat:2|intcomma }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-file-earmark-medical fs-2 text-secondary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-start border-danger border-4 shadow-sm h-100 py-2 bg-light">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Total em Atraso ({{ total_contratos_atrasados }})</div>
+                            <div class="h4 mb-0 font-weight-bold text-danger">
+                                R$ {{ total_valor_atrasado|floatformat:2|intcomma }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-exclamation-octagon fs-2 text-danger"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-2">
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center bg-white">
+                    <h6 class="m-0 font-weight-bold text-primary"><i class="bi bi-calendar-event"></i> Próximos Recebimentos (7 dias)</h6>
+                    <a href="/emprestimos/a-vencer/" class="btn btn-sm btn-link">Ver todos</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th>Contrato</th>
+                                    <th>Vencimento</th>
+                                    <th class="text-end">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for p in prox_recebimentos %}
+                                <tr>
+                                    <td><strong>{{ p.emprestimo.cliente.nome_completo|truncatechars:25 }}</strong></td>
+                                    <td><span class="badge bg-light text-dark border">{{ p.emprestimo.codigo_contrato }}</span></td>
+                                    <td>{{ p.vencimento|date:"d/m" }}</td>
+                                    <td class="text-end fw-bold">R$ {{ p.valor|floatformat:2|intcomma }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="4" class="text-center py-4 text-muted">Sem vencimentos próximos.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header py-3 bg-white">
+                    <h6 class="m-0 font-weight-bold text-dark">Ações Rápidas</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="/emprestimos/novo/" class="btn btn-primary text-start p-3 shadow-sm border-0">
+                            <i class="bi bi-plus-circle me-2"></i> Novo Empréstimo
+                        </a>
+                        <a href="/recebiveis/criar/" class="btn btn-info text-white text-start p-3 shadow-sm border-0">
+                            <i class="bi bi-calculator me-2"></i> Nova Antecipação
+                        </a>
+                        <a href="/financeiro/" class="btn btn-dark text-start p-3 shadow-sm border-0">
+                            <i class="bi bi-currency-dollar me-2"></i> Fluxo de Caixa
+                        </a>
+                        <a href="{% url 'cobranca:painel_cobranca' %}" class="btn btn-outline-danger text-start p-3">
+                            <i class="bi bi-megaphone me-2"></i> Painel de Cobrança
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

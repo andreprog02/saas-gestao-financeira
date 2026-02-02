@@ -16,6 +16,7 @@ from django.http import FileResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST
 from django.utils.dateparse import parse_date
+from .models import Parcela
 
 # Financeiro Imports
 from financeiro.models import Transacao, calcular_saldo_atual
@@ -631,3 +632,28 @@ def pagar_parcial(request, parcela_id: int):
         return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
 
     return redirect("emprestimos:contrato_detalhe", emprestimo_id=contrato.id)
+
+def detalhes_pagamento_json(request, parcela_id):
+    parcela = get_object_object_or_404(Parcela, id=parcela_id)
+    # O método dados_atualizados já calcula Multa e Juros com base na data atual
+    dados = parcela.dados_atualizados() 
+    
+    return JsonResponse({
+        'valor_original': dados['valor_original'],
+        'multa': dados['multa'],
+        'juros': dados['juros'],
+        'total': dados['valor_total'],
+        'dias_atraso': dados['dias_atraso']
+    })
+
+def calcular_valores_parcela_json(request, parcela_id):
+    parcela = get_object_or_404(Parcela, id=parcela_id)
+    # Usamos o método que você já tem no models.py para pegar os juros/multa reais
+    dados = parcela.dados_atualizados() 
+    
+    return JsonResponse({
+        'valor_nominal': f"{dados['valor_original']:.2f}",
+        'multa': f"{dados['multa']:.2f}",
+        'juros': f"{dados['juros']:.2f}",
+        'total': f"{dados['valor_total']:.2f}"
+    })
