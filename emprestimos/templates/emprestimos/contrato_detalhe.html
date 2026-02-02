@@ -18,12 +18,12 @@
 <hr class="my-3">
 
 <div class="table-responsive">
-  <table class="table table-sm align-middle">
+  <table class="table table-sm align-middle table-hover">
     <thead>
       <tr>
         <th>#</th>
         <th>Vencimento</th>
-        <th class="text-end">Valor</th>
+        <th class="text-end">Valor Original</th>
         <th>Status</th>
         <th class="text-end">Ação</th>
       </tr>
@@ -37,7 +37,7 @@
           <td>
             {% if p.status == "ABERTA" %}
                 {% if p.vencimento < hoje %}
-                    <span class="badge bg-danger text-white">PARCELA EM ATRASO</span>
+                    <span class="badge bg-danger">PARCELA EM ATRASO</span>
                 {% else %}
                     <span class="badge bg-warning text-dark">EM ABERTO</span>
                 {% endif %}
@@ -64,7 +64,7 @@
 {# MODAL DE PAGAMENTO #}
 <div class="modal fade" id="modalPagarParcela" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
+    <div class="modal-content border-0 shadow">
       <div class="modal-header bg-success text-white">
         <h5 class="modal-title">Baixa de Pagamento</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -73,7 +73,7 @@
         {% csrf_token %}
         <div class="modal-body">
           <div class="text-center mb-3">
-             <span class="text-muted small">PARCELA</span>
+             <span class="text-muted small">CONFIRMAR PARCELA</span>
              <h4 id="pg_numero_display">--</h4>
           </div>
           <div class="card bg-light border-0 mb-3">
@@ -84,7 +84,7 @@
               </div>
               <div id="info-atraso" style="display: none;">
                 <div class="d-flex justify-content-between text-danger mb-2">
-                  <span>Multa:</span>
+                  <span>Multa (Atraso):</span>
                   <span class="fw-bold">+ R$ <span id="pg_multa">0,00</span></span>
                 </div>
                 <div class="d-flex justify-content-between text-danger mb-2">
@@ -94,18 +94,18 @@
               </div>
               <hr>
               <div class="d-flex justify-content-between fs-5 fw-bold text-success">
-                <span>TOTAL:</span>
+                <span>TOTAL A RECEBER:</span>
                 <span>R$ <span id="pg_total">0,00</span></span>
               </div>
             </div>
           </div>
-          <div class="mb-3">
-            <label class="form-label fw-bold small">SENHA DE CONFIRMAÇÃO</label>
-            <input type="password" name="senha" id="senha_pagamento" class="form-control text-center" required>
+          <div class="mb-2 text-center">
+            <label class="form-label fw-bold small">DIGITE A SENHA PARA CONFIRMAR</label>
+            <input type="password" name="senha" id="senha_pagamento" class="form-control text-center form-control-lg" required>
           </div>
         </div>
-        <div class="modal-footer border-0 bg-light">
-          <button type="submit" class="btn btn-success w-100 fw-bold">CONFIRMAR PAGAMENTO</button>
+        <div class="modal-footer border-0">
+          <button type="submit" class="btn btn-success btn-lg w-100 fw-bold">EFETUAR BAIXA AGORA</button>
         </div>
       </form>
     </div>
@@ -123,20 +123,24 @@
       document.getElementById('pg_numero_display').textContent = button.getAttribute('data-numero');
       document.getElementById('senha_pagamento').value = '';
 
+      const spanTotal = document.getElementById('pg_total');
+      const spanBase = document.getElementById('pg_valor_base');
+
       if (estaAtrasada) {
           document.getElementById('info-atraso').style.display = 'block';
+          spanTotal.textContent = "Calculando...";
           fetch(`/emprestimos/parcela/${id}/calcular-valores/`)
             .then(r => r.json())
             .then(data => {
-                document.getElementById('pg_valor_base').textContent = data.valor_original.replace('.', ',');
+                spanBase.textContent = data.valor_original.replace('.', ',');
                 document.getElementById('pg_multa').textContent = data.multa.replace('.', ',');
                 document.getElementById('pg_juros').textContent = data.juros.replace('.', ',');
-                document.getElementById('pg_total').textContent = data.total.replace('.', ',');
+                spanTotal.textContent = data.total.replace('.', ',');
             });
       } else {
           document.getElementById('info-atraso').style.display = 'none';
-          document.getElementById('pg_valor_base').textContent = button.getAttribute('data-valor').replace('.', ',');
-          document.getElementById('pg_total').textContent = button.getAttribute('data-valor').replace('.', ',');
+          spanBase.textContent = button.getAttribute('data-valor').replace('.', ',');
+          spanTotal.textContent = button.getAttribute('data-valor').replace('.', ',');
       }
       document.getElementById('formPagarParcela').action = '/emprestimos/parcela/' + id + '/pagar/';
     });
