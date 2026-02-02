@@ -1,22 +1,84 @@
 {% extends 'base.html' %}
+{% load static %}
+{% load humanize %}
 
-{% block title %}Ativar Contrato{% endblock %}
+{% block extra_js %}
+    <script src="{% static 'js/masks.js' %}"></script>
+{% endblock %}
 
 {% block content %}
 <div class="container mt-5">
-    <h2>Ativar Contrato {{ contrato.contrato_id|default:"Pendente" }}</h2>
-    {% if messages %}
-    <div class="alert alert-info">
-        {% for message in messages %}
-        {{ message }}
-        {% endfor %}
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow-lg border-0">
+                <div class="card-header bg-success text-white py-3">
+                    <h4 class="mb-0"><i class="fas fa-signature"></i> Efetivar Contrato</h4>
+                </div>
+                <div class="card-body p-4">
+                    
+                    <div class="text-center mb-4">
+                        <h5 class="text-muted">Valor Líquido Disponível</h5>
+                        <h1 class="text-success fw-bold">R$ {{ contrato.valor_liquido|floatformat:2 }}</h1>
+                        <p class="text-muted small">Este valor será creditado na Conta Corrente do cliente.</p>
+                    </div>
+
+                    <form method="post" autocomplete="off">
+                        {% csrf_token %}
+                        
+                        {% if form.non_field_errors %}
+                        <div class="alert alert-danger">
+                            {{ form.non_field_errors }}
+                        </div>
+                        {% endif %}
+
+                        <div class="mb-4 bg-light p-3 rounded border">
+                            <label class="form-label fw-bold text-dark">
+                                <i class="fas fa-money-bill-wave text-success"></i> Entregar Dinheiro em Mãos? (Saque)
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">R$</span>
+                                <input type="text" 
+                                       name="saque_inicial" 
+                                       id="id_saque_inicial"
+                                       class="form-control money-mask fw-bold" 
+                                       value="{{ form.saque_inicial.value|default:'0,00' }}"
+                                       inputmode="numeric">
+                            </div>
+                            {% if form.saque_inicial.errors %}
+                                <div class="text-danger mt-1 small">
+                                    {{ form.saque_inicial.errors }}
+                                </div>
+                            {% endif %}
+                            
+                            <div class="form-text text-muted">
+                                Se você entregar dinheiro vivo agora, preencha este campo. 
+                                Caso contrário, deixe 0,00.
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Senha de Gerente/Confirmação</label>
+                            <input type="password" name="senha" class="form-control" placeholder="Digite sua senha (ex: 1234)" required>
+                            
+                            {% if form.senha.errors %}
+                                <div class="text-danger mt-1 fw-bold">
+                                    {{ form.senha.errors }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="fas fa-check"></i> Confirmar e Gerar
+                            </button>
+                            <a href="{% url 'simular_contrato' contrato.id %}" class="btn btn-link text-secondary">
+                                Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
-    {% endif %}
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit" class="btn btn-success">Ativar</button>
-    </form>
-    <a href="{% url 'simular_contrato' contrato.id %}" class="btn btn-secondary mt-3">Voltar à Simulação</a>
 </div>
 {% endblock %}

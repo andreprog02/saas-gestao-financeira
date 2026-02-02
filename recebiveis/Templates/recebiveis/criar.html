@@ -1,15 +1,95 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}Criar Contrato de Recebíveis{% endblock %}
+{% block title %}Nova Simulação | Recebíveis{% endblock %}
+
+{% block extra_js %}
+    <script src="{% static 'js/masks.js' %}"></script>
+{% endblock %}
 
 {% block content %}
 <div class="container mt-5">
-    <h2>Criar Novo Contrato de Adiantamento de Recebíveis</h2>
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}  <!-- Renderiza o formulário com campos como cliente e taxa_desconto -->
-        <button type="submit" class="btn btn-primary">Salvar e Adicionar Recebíveis</button>
-    </form>
-    <a href="{% url 'lista_contratos' %}" class="btn btn-secondary mt-3">Voltar à Lista</a>
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            
+            <div class="card shadow-lg border-0 rounded-3">
+                <div class="card-header bg-primary text-white py-3 rounded-top-3">
+                    <h4 class="mb-0 fw-bold">
+                        <i class="fas fa-calculator me-2"></i>Nova Simulação
+                    </h4>
+                    <p class="mb-0 text-white-50 small">Inicie uma antecipação de recebíveis</p>
+                </div>
+                
+                <div class="card-body p-4">
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+
+                        {% if form.non_field_errors %}
+                        <div class="alert alert-danger d-flex align-items-center" role="alert">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            <div>{{ form.non_field_errors }}</div>
+                        </div>
+                        {% endif %}
+                        
+                        <div class="mb-4">
+                            <label for="{{ form.cliente.id_for_label }}" class="form-label fw-bold text-secondary">
+                                Selecione o Cliente
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-user"></i></span>
+                                {{ form.cliente }}
+                            </div>
+                            {% if form.cliente.errors %}
+                                <div class="text-danger small mt-1">{{ form.cliente.errors }}</div>
+                            {% else %}
+                                <div class="form-text">O contrato será vinculado a este cliente.</div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="id_taxa_desconto" class="form-label fw-bold text-secondary">
+                                Taxa de Desconto Mensal (%)
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-percentage"></i></span>
+                                
+                                <input type="text" 
+                                       name="taxa_desconto" 
+                                       id="id_taxa_desconto"
+                                       class="form-control percent-mask form-control-lg fw-bold text-primary" 
+                                       value="{{ form.taxa_desconto.value|default:'5.00' }}" 
+                                       required 
+                                       placeholder="0,00%">
+                            </div>
+                            
+                            {% if form.taxa_desconto.errors %}
+                                <div class="text-danger small mt-1">{{ form.taxa_desconto.errors }}</div>
+                            {% else %}
+                                <div class="form-text">Ex: Digite 500 para 5,00%. Esta taxa será aplicada sobre os títulos.</div>
+                            {% endif %}
+                        </div>
+
+                        <hr class="my-4">
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{% url 'lista_contratos' %}" class="btn btn-outline-secondary px-4">
+                                <i class="fas fa-times"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary btn-lg px-5 shadow-sm">
+                                Continuar <i class="fas fa-arrow-right ms-2"></i>
+                            </button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+
+            <div class="text-center mt-4 text-muted small">
+                <i class="fas fa-info-circle"></i> 
+                Após criar a simulação, você poderá adicionar os cheques e títulos na próxima tela.
+            </div>
+
+        </div>
+    </div>
 </div>
 {% endblock %}

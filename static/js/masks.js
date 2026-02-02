@@ -1,39 +1,42 @@
-function onlyDigits(s){ return (s || "").replace(/\D/g, ""); }
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // ==========================================================
+    // MÁSCARA MONETÁRIA (ESTILO CAIXA ELETRÔNICO / ATM)
+    // Digita: 1234 -> Vira: R$ 12,34
+    // ==========================================================
+    const applyMoneyMask = (input) => {
+        let value = input.value.replace(/\D/g, ""); // Remove tudo que não for número
+        
+        if (value === "") return;
 
-function maskCPF(el){
-  let v = onlyDigits(el.value).slice(0,11);
-  v = v.replace(/(\d{3})(\d)/, "$1.$2");
-  v = v.replace(/(\d{3})(\d)/, "$1.$2");
-  v = v.replace(/(\d{3})(\d{1,2})$/, "$1-$2");
-  el.value = v;
-}
+        // Converte para centavos (divide por 100)
+        value = (parseInt(value) / 100).toFixed(2);
+        
+        // Separa parte inteira e decimal
+        let parts = value.split('.');
+        
+        // Adiciona separador de milhar (.)
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        
+        // Retorna formatado: R$ 1.000,00
+        input.value = "R$ " + parts.join(",");
+    };
 
-function maskCEP(el){
-  let v = onlyDigits(el.value).slice(0,8);
-  if (v.length > 5) v = v.replace(/(\d{5})(\d)/, "$1-$2");
-  el.value = v;
-}
+    // Inicializa todos os campos com a classe 'money-mask'
+    const moneyInputs = document.querySelectorAll('.money-mask');
+    moneyInputs.forEach(input => {
+        // Formata valor inicial se houver (ex: vindo do banco)
+        if (input.value && !input.value.includes('R$')) {
+            // Garante que o valor seja tratado como centavos
+            // Ex: 150.00 -> 15000 -> R$ 150,00
+            let rawValue = parseFloat(input.value).toFixed(2).replace('.', '');
+            input.value = rawValue;
+            applyMoneyMask(input);
+        }
 
-function maskTelefone(el){
-  let v = onlyDigits(el.value).slice(0,11);
-  if (v.length < 2){ el.value = v; return; }
-  const ddd = v.slice(0,2);
-  const dig = v.slice(2,3);
-  const mid = v.slice(3,7);
-  const end = v.slice(7,11);
-  let out = `(${ddd})`;
-  if (dig) out += ` ${dig}`;
-  if (mid) out += ` ${mid}`;
-  if (end) out += `-${end}`;
-  el.value = out;
-}
+        input.addEventListener('input', () => applyMoneyMask(input));
+    });
 
-document.addEventListener("DOMContentLoaded", () => {
-  const cpf = document.getElementById("id_cpf");
-  const cep = document.getElementById("id_cep");
-  const tel = document.getElementById("id_telefone");
-
-  if (cpf) cpf.addEventListener("input", () => maskCPF(cpf));
-  if (cep) cep.addEventListener("input", () => maskCEP(cep));
-  if (tel) tel.addEventListener("input", () => maskTelefone(tel));
+    // Mantenha suas outras máscaras (CPF, CEP, etc) abaixo se desejar...
+    // ...
 });

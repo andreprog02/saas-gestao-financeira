@@ -1,47 +1,99 @@
 {% extends 'base.html' %}
-
-{% block title %}Simulação de Contrato {{ contrato.contrato_id|default:"Pendente" }}{% endblock %}
+{% load humanize %}
 
 {% block content %}
 <div class="container mt-5">
-    <h2>Simulação do Contrato</h2>
-    <div class="card mb-4">
-        <div class="card-body">
-            <p><strong>Cliente:</strong> {{ contrato.cliente.nome }}</p>
-            <p><strong>Status:</strong> {{ contrato.get_status_display }}</p>
-            <p><strong>Taxa de Desconto:</strong> {{ contrato.taxa_desconto|floatformat:2 }}%</p>
-            <p><strong>Valor Bruto:</strong> R$ {{ contrato.valor_bruto|floatformat:2 }}</p>
-            <p><strong>Desconto:</strong> R$ {{ valor_do_desconto|floatformat:2 }}</p>
-            <p><strong>Valor Líquido:</strong> R$ {{ contrato.valor_liquido|floatformat:2 }}</p>
-            <p><strong>Data de Criação:</strong> {{ contrato.data_criacao|date:"d/m/Y" }}</p>
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card shadow-lg border-0">
+                <div class="card-header bg-primary text-white py-3 d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0"><i class="fas fa-file-contract"></i> Resumo da Simulação</h4>
+                    <span class="badge bg-light text-primary fs-6">{{ contrato.contrato_id|default:"Novo Contrato" }}</span>
+                </div>
+                
+                <div class="card-body p-4">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h6 class="text-muted text-uppercase fw-bold small">Cliente</h6>
+                            <h4 class="text-dark">{{ contrato.cliente.nome_completo }}</h4>
+                            <p class="text-muted mb-0"><i class="fas fa-id-card"></i> {{ contrato.cliente.cpf }}</p>
+                        </div>
+                        <div class="col-md-6 text-md-end">
+                            <h6 class="text-muted text-uppercase fw-bold small">Data da Simulação</h6>
+                            <p class="fs-5">{{ contrato.data_criacao|date:"d/m/Y" }}</p>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="row text-center my-5">
+                        <div class="col-md-4 mb-3">
+                            <div class="p-3 bg-light rounded border">
+                                <small class="text-muted d-block fw-bold">VALOR BRUTO (Total dos Itens)</small>
+                                <h3 class="text-dark fw-bold mb-0">R$ {{ contrato.valor_bruto|floatformat:2 }}</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="p-3 bg-light rounded border position-relative">
+                                <span class="badge bg-danger position-absolute top-0 start-50 translate-middle">
+                                    -{{ contrato.taxa_desconto }}% a.m.
+                                </span>
+                                <small class="text-muted d-block fw-bold">DESAGIO / TAXAS</small>
+                                <h3 class="text-danger fw-bold mb-0">- R$ {{ valor_do_desconto|floatformat:2 }}</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="p-3 bg-success text-white rounded shadow-sm">
+                                <small class="text-white-50 d-block fw-bold">VALOR LÍQUIDO A RECEBER</small>
+                                <h2 class="fw-bold mb-0">R$ {{ contrato.valor_liquido|floatformat:2 }}</h2>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h5 class="text-secondary mb-3"><i class="fas fa-list"></i> Itens do Contrato</h5>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-sm table-striped">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th>Identificação</th>
+                                    <th>Vencimento</th>
+                                    <th class="text-end">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in contrato.itens.all %}
+                                <tr>
+                                    <td>{{ item.get_tipo_display }}</td>
+                                    <td>{{ item.numero }}</td>
+                                    <td>{{ item.vencimento|date:"d/m/Y" }}</td>
+                                    <td class="text-end">R$ {{ item.valor|floatformat:2 }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="alert alert-info d-flex align-items-center">
+                        <i class="fas fa-info-circle fa-2x me-3"></i>
+                        <div>
+                            Ao clicar em <strong>Gerar Contrato</strong>, o valor líquido será creditado na conta do cliente e o contrato passará a constar como ATIVO.
+                        </div>
+                    </div>
+
+                </div>
+                
+                <div class="card-footer bg-light p-3 d-flex justify-content-between">
+                    <a href="{% url 'adicionar_item' contrato.id %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Voltar e Editar
+                    </a>
+                    
+                    <a href="{% url 'ativar_contrato' contrato.id %}" class="btn btn-success btn-lg shadow-sm">
+                        <i class="fas fa-check-circle"></i> Gerar Contrato & Efetivar
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
-    
-    <h3>Recebíveis Incluídos</h3>
-    <table class="table table-bordered">
-        <thead>
-            <tr>
-                <th>Tipo</th>
-                <th>Número</th>
-                <th>Vencimento</th>
-                <th>Valor</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in contrato.itens.all %}
-            <tr>
-                <td>{{ item.get_tipo_display }}</td>
-                <td>{{ item.numero }}</td>
-                <td>{{ item.vencimento|date:"d/m/Y" }}</td>
-                <td>R$ {{ item.valor|floatformat:2 }}</td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="4">Nenhum recebível adicionado.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    
-    <a href="{% url 'adicionar_item' contrato.id %}" class="btn btn-secondary">Adicionar Mais Recebíveis</a>
-    <a href="{% url 'lista_contratos' %}" class="btn btn-primary">Voltar à Lista</a>
 </div>
 {% endblock %}
