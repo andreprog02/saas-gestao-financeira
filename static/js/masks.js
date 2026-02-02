@@ -7,7 +7,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const applyMoneyMask = (input) => {
         let value = input.value.replace(/\D/g, ""); // Remove tudo que não for número
         
-        if (value === "") return;
+        if (value === "") {
+            input.value = "";
+            return;
+        }
 
         // Converte para centavos (divide por 100)
         value = (parseInt(value) / 100).toFixed(2);
@@ -25,10 +28,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Inicializa todos os campos com a classe 'money-mask'
     const moneyInputs = document.querySelectorAll('.money-mask');
     moneyInputs.forEach(input => {
-        // Formata valor inicial se houver (ex: vindo do banco)
+        // Formata valor inicial se houver (ex: vindo do banco ao editar)
         if (input.value && !input.value.includes('R$')) {
             // Garante que o valor seja tratado como centavos
-            // Ex: 150.00 -> 15000 -> R$ 150,00
+            // Ex: 1500.00 -> 150000 -> R$ 1.500,00
             let rawValue = parseFloat(input.value).toFixed(2).replace('.', '');
             input.value = rawValue;
             applyMoneyMask(input);
@@ -36,7 +39,4 @@ document.addEventListener('DOMContentLoaded', function() {
 
         input.addEventListener('input', () => applyMoneyMask(input));
     });
-
-    // Mantenha suas outras máscaras (CPF, CEP, etc) abaixo se desejar...
-    // ...
 });

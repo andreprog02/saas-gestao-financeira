@@ -65,3 +65,17 @@ class Cliente(models.Model):
     def __str__(self):
         return f"{self.nome_completo} ({self.cpf})"
 
+class ContaCorrente(models.Model):
+    TIPO_CHOICES = (
+        ('CREDITO', 'Crédito (Entrada)'),
+        ('DEBITO', 'Débito (Saída)'),
+    )
+    
+    cliente = models.ForeignKey('Cliente', on_delete=models.CASCADE, related_name='movimentacoes')
+    tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
+    valor = models.DecimalField(max_digits=12, decimal_places=2)
+    descricao = models.CharField(max_length=255)
+    data = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} - R$ {self.valor} ({self.data.strftime('%d/%m/%Y')})"

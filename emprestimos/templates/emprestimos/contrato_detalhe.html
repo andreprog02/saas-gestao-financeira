@@ -11,7 +11,8 @@
     </p>
   </div>
   <div class="d-flex gap-2">
-    <a href="{% url 'emprestimos:contrato_pdf' contrato.id %}" target="_blank" class="btn btn-primary">Imprimir</a>
+    {# BOTÃO COMENTADO PARA NÃO QUEBRAR O SISTEMA ENQUANTO O PDF ESTÁ DESATIVADO #}
+    {# <a href="{% url 'emprestimos:contrato_pdf' contrato.id %}" target="_blank" class="btn btn-primary">Imprimir</a> #}
   </div>
 </div>
 
@@ -115,35 +116,37 @@
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     var modalPagar = document.getElementById('modalPagarParcela');
-    modalPagar.addEventListener('show.bs.modal', function (event) {
-      var button = event.relatedTarget;
-      var id = button.getAttribute('data-id');
-      var estaAtrasada = button.getAttribute('data-atrasada') === 'true';
-      
-      document.getElementById('pg_numero_display').textContent = button.getAttribute('data-numero');
-      document.getElementById('senha_pagamento').value = '';
+    if (modalPagar) { // Verificação de segurança
+        modalPagar.addEventListener('show.bs.modal', function (event) {
+        var button = event.relatedTarget;
+        var id = button.getAttribute('data-id');
+        var estaAtrasada = button.getAttribute('data-atrasada') === 'true';
+        
+        document.getElementById('pg_numero_display').textContent = button.getAttribute('data-numero');
+        document.getElementById('senha_pagamento').value = '';
 
-      const spanTotal = document.getElementById('pg_total');
-      const spanBase = document.getElementById('pg_valor_base');
+        const spanTotal = document.getElementById('pg_total');
+        const spanBase = document.getElementById('pg_valor_base');
 
-      if (estaAtrasada) {
-          document.getElementById('info-atraso').style.display = 'block';
-          spanTotal.textContent = "Calculando...";
-          fetch(`/emprestimos/parcela/${id}/calcular-valores/`)
-            .then(r => r.json())
-            .then(data => {
-                spanBase.textContent = data.valor_original.replace('.', ',');
-                document.getElementById('pg_multa').textContent = data.multa.replace('.', ',');
-                document.getElementById('pg_juros').textContent = data.juros.replace('.', ',');
-                spanTotal.textContent = data.total.replace('.', ',');
-            });
-      } else {
-          document.getElementById('info-atraso').style.display = 'none';
-          spanBase.textContent = button.getAttribute('data-valor').replace('.', ',');
-          spanTotal.textContent = button.getAttribute('data-valor').replace('.', ',');
-      }
-      document.getElementById('formPagarParcela').action = '/emprestimos/parcela/' + id + '/pagar/';
-    });
+        if (estaAtrasada) {
+            document.getElementById('info-atraso').style.display = 'block';
+            spanTotal.textContent = "Calculando...";
+            fetch(`/emprestimos/parcela/${id}/calcular-valores/`)
+                .then(r => r.json())
+                .then(data => {
+                    spanBase.textContent = data.valor_original.replace('.', ',');
+                    document.getElementById('pg_multa').textContent = data.multa.replace('.', ',');
+                    document.getElementById('pg_juros').textContent = data.juros.replace('.', ',');
+                    spanTotal.textContent = data.total.replace('.', ',');
+                });
+        } else {
+            document.getElementById('info-atraso').style.display = 'none';
+            spanBase.textContent = button.getAttribute('data-valor').replace('.', ',');
+            spanTotal.textContent = button.getAttribute('data-valor').replace('.', ',');
+        }
+        document.getElementById('formPagarParcela').action = '/emprestimos/parcela/' + id + '/pagar/';
+        });
+    }
   });
 </script>
 {% endblock %}
