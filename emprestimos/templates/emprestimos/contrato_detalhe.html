@@ -11,7 +11,12 @@
     </p>
   </div>
   <div class="d-flex gap-2">
-    {# BOTÃO COMENTADO PARA NÃO QUEBRAR O SISTEMA ENQUANTO O PDF ESTÁ DESATIVADO #}
+    {% if contrato.status == "ATIVO" or contrato.status == "ATRASADO" %}
+    <button type="button" class="btn btn-warning text-dark fw-bold" data-bs-toggle="modal" data-bs-target="#modalRenegociar">
+        <i class="bi bi-arrow-repeat me-1"></i> Renegociar
+    </button>
+    {% endif %}
+
     {# <a href="{% url 'emprestimos:contrato_pdf' contrato.id %}" target="_blank" class="btn btn-primary">Imprimir</a> #}
   </div>
 </div>
@@ -43,7 +48,7 @@
                     <span class="badge bg-warning text-dark">EM ABERTO</span>
                 {% endif %}
             {% else %}
-                <span class="badge bg-success">PAGO</span>
+                <span class="badge bg-success">{{ p.status }}</span>
             {% endif %}
           </td>
           <td class="text-end">
@@ -62,7 +67,7 @@
   </table>
 </div>
 
-{# MODAL DE PAGAMENTO #}
+{# --- MODAL DE PAGAMENTO (JÁ EXISTIA) --- #}
 <div class="modal fade" id="modalPagarParcela" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
@@ -113,10 +118,78 @@
   </div>
 </div>
 
+{# --- MODAL DE RENEGOCIAÇÃO (ADICIONADO DE VOLTA) --- #}
+<div class="modal fade" id="modalRenegociar" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title fw-bold text-dark">Renegociar Contrato</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{% url 'emprestimos:renegociar' contrato.id %}" method="POST">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="alert alert-warning small mb-3">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        Atenção: Esta ação liquidará as parcelas em aberto atuais e criará um <strong>novo contrato</strong> com o saldo devedor restante.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Valor de Entrada (R$)</label>
+                        <input type="text" name="entrada" class="form-control money-mask" placeholder="0,00">
+                        <div class="form-text">Opcional. Abaterá do saldo devedor antes do novo cálculo.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Novo Vencimento (1ª Parcela)</label>
+                        <input type="date" name="novo_vencimento" class="form-control" required>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Qtd. Parcelas</label>
+                            <input type="number" name="qtd_parcelas" class="form-control" value="1" min="1" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Taxa de Juros (%)</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">
+                                    <input class="form-check-input mt-0" type="checkbox" name="usar_taxa_antiga" value="1" id="checkTaxaAntiga" checked onchange="toggleNovaTaxa()">
+                                </span>
+                                <input type="number" step="0.01" name="nova_taxa" id="inputNovaTaxa" class="form-control" value="{{ contrato.taxa_juros_mensal|unlocalize }}" readonly>
+                            </div>
+                            <div class="form-text small" style="font-size: 0.75rem;">Desmarque p/ mudar a taxa.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning fw-bold text-dark">Confirmar Renegociação</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
+  // Função para controlar o campo de taxa da renegociação
+  function toggleNovaTaxa() {
+      const check = document.getElementById('checkTaxaAntiga');
+      const input = document.getElementById('inputNovaTaxa');
+      if (check.checked) {
+          input.readOnly = true;
+          // Se quiser resetar para o valor original visualmente:
+          // input.value = "{{ contrato.taxa_juros_mensal|unlocalize }}"; 
+      } else {
+          input.readOnly = false;
+          input.focus();
+      }
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
+    // Script do Modal de Pagamento
     var modalPagar = document.getElementById('modalPagarParcela');
-    if (modalPagar) { // Verificação de segurança
+    if (modalPagar) {
         modalPagar.addEventListener('show.bs.modal', function (event) {
         var button = event.relatedTarget;
         var id = button.getAttribute('data-id');
@@ -131,6 +204,7 @@
         if (estaAtrasada) {
             document.getElementById('info-atraso').style.display = 'block';
             spanTotal.textContent = "Calculando...";
+            // Chama o AJAX para calcular multa/juros atualizados
             fetch(`/emprestimos/parcela/${id}/calcular-valores/`)
                 .then(r => r.json())
                 .then(data => {

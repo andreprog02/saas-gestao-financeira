@@ -12,8 +12,11 @@ from django.db.models import Q
 # Importações dos Models
 from .models import Emprestimo, Parcela, ParcelaStatus, EmprestimoStatus, ContratoLog
 from .forms import EmprestimoForm, BuscaClienteForm
-from clientes.models import Cliente, ContaCorrente # <--- IMPORTANTE: Adicione ContaCorrente aqui
+from clientes.models import Cliente
 from financeiro.models import Transacao
+
+# === CORREÇÃO AQUI: Importar do app 'contas' (o sistema real) ===
+from contas.models import ContaCorrente, MovimentacaoConta 
 
 # Tenta importar serviço de simulação, se não existir usa fallback
 try:
@@ -82,16 +85,22 @@ def pagar_parcela(request, pk):
             )
 
             # 3. Conta Corrente do Cliente (DÉBITO - O cliente pagou)
-            # Verifica se o model ContaCorrente existe para evitar erro se você ainda não criou
-         
-            ContaCorrente.objects.create(
-                cliente=parcela.emprestimo.cliente,
-                tipo='DEBITO', # ou 'SAIDA' dependendo do seu model
-                valor=valor_final,
-                descricao=f"Pgto Parcela {parcela.numero} - Contrato {parcela.emprestimo.codigo_contrato}",
-                data=timezone.now()
-            )
-            
+            try:
+                # Pega a conta REAL do cliente (do app contas)
+                conta_cliente, created = ContaCorrente.objects.get_or_create(cliente=parcela.emprestimo.cliente)
+                
+                # Cria a movimentação (isso atualiza o saldo automaticamente no model MovimentacaoConta)
+                MovimentacaoConta.objects.create(
+                    conta=conta_cliente,
+                    tipo='DEBITO',
+                    origem='PAGAMENTO_PARCELA',
+                    valor=valor_final,
+                    descricao=f"Pgto Parcela {parcela.numero} - Contrato {parcela.emprestimo.codigo_contrato}",
+                    data=timezone.now(),
+                    parcela=parcela
+                )
+            except Exception as e:
+                print(f"ERRO CRÍTICO AO DEBITAR: {e}")
 
             # 4. Log do Sistema
             ContratoLog.objects.create(
@@ -124,7 +133,7 @@ def novo_emprestimo_form(request, cliente_id):
         form = EmprestimoForm(request.POST)
         
         if form.is_valid():
-            # Dados limpos (já convertidos de R$ para Decimal pelo form)
+            # Dados limpos
             valor = form.cleaned_data['valor_emprestado']
             taxa = form.cleaned_data['taxa_juros_mensal']
             qtd = form.cleaned_data['qtd_parcelas']
@@ -132,8 +141,6 @@ def novo_emprestimo_form(request, cliente_id):
 
             # --- LÓGICA DE SIMULAÇÃO ---
             if 'simular' in request.POST:
-                # Cálculo simples (Juros Simples) para visualização
-                # Se tiver o services.py com tabela price, ele usaria aqui
                 juros_total = valor * (taxa / 100) * qtd
                 montante_final = valor + juros_total
                 valor_parcela = montante_final / qtd
@@ -167,15 +174,14 @@ def novo_emprestimo_form(request, cliente_id):
                     emprestimo.cliente = cliente
                     emprestimo.usuario = request.user
                     
-                    # Gera Código Único para evitar erro de UNIQUE constraint
+                    # Gera Código Único
                     agora = timezone.now()
                     uuid_code = str(uuid.uuid4())[:4].upper()
                     emprestimo.codigo_contrato = f"{agora.strftime('%Y%m%d')}-{cliente.id}-{uuid_code}"
                     
-                    emprestimo.save() # Salva o cabeçalho do empréstimo
+                    emprestimo.save() 
 
-                    # Gera as Parcelas no Banco
-                    # (Repetindo o cálculo para garantir persistência correta)
+                    # Gera as Parcelas
                     juros_total = valor * (taxa / 100) * qtd
                     montante_final = valor + juros_total
                     valor_parcela = montante_final / qtd
@@ -192,19 +198,23 @@ def novo_emprestimo_form(request, cliente_id):
                         )
                         data_atual = data_atual + relativedelta(months=1)
 
-                    # === NOVO: CREDITAR NA CONTA DO CLIENTE ===
-                    # O dinheiro do empréstimo entra na conta dele
+                    # === CORREÇÃO: CREDITAR NA CONTA REAL DO CLIENTE ===
                     try:
-                        ContaCorrente.objects.create(
-                            cliente=cliente,
-                            tipo='CREDITO', # ou 'ENTRADA'
-                            valor=valor, # Valor principal emprestado
+                        # 1. Garante que o cliente tem uma conta no sistema 'contas'
+                        conta_real, created = ContaCorrente.objects.get_or_create(cliente=cliente)
+                        
+                        # 2. Cria a movimentação no sistema correto
+                        MovimentacaoConta.objects.create(
+                            conta=conta_real,
+                            tipo='CREDITO',
+                            origem='EMPRESTIMO', # Usando o choice correto do seu model
+                            valor=valor,
                             descricao=f"Liberação Empréstimo {emprestimo.codigo_contrato}",
-                            data=timezone.now()
+                            data=timezone.now(),
+                            emprestimo=emprestimo
                         )
                     except Exception as e:
-                        # Loga o erro mas não trava o empréstimo (opcional)
-                        print(f"Erro ao creditar conta corrente: {e}")
+                        print(f"ERRO CRÍTICO AO CREDITAR: {e}")
 
                     messages.success(request, f"Contrato {emprestimo.codigo_contrato} gerado e valor creditado na conta!")
                     return redirect("emprestimos:contrato_detalhe", pk=emprestimo.id)
@@ -228,9 +238,6 @@ def cancelar_contrato(request, pk):
                 contrato.save()
                 contrato.parcelas.filter(status=ParcelaStatus.ABERTA).update(status=ParcelaStatus.CANCELADO)
                 
-                # Opcional: Estornar da Conta Corrente (criar um DÉBITO de estorno)
-                # ContaCorrente.objects.create(..., tipo='DEBITO', descricao='Estorno Cancelamento', ...)
-
                 messages.error(request, f"Contrato {contrato.codigo_contrato} cancelado.")
         else:
             messages.error(request, "Senha administrativa incorreta.")
