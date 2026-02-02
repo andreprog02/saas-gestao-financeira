@@ -19,6 +19,7 @@ urlpatterns = [
 
     path("contratos/<int:emprestimo_id>/cancelar/", views.cancelar_contrato, name="cancelar_contrato"),
     path("contratos/<int:emprestimo_id>/reabrir/", views.reabrir_contrato, name="reabrir_contrato"),
+    path("parcela/<int:parcela_id>/calcular-valores/", views.calcular_valores_parcela_ajax, name="calcular_valores_ajax"),
 
 
 

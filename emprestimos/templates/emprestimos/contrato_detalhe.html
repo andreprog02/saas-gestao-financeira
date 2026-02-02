@@ -1,209 +1,145 @@
 {% extends "base.html" %}
 {% load humanize l10n %}
-
 {% block content %}
-<div class="d-flex align-items-start justify-content-between gap-2">
-    <div>
-        <h3 class="mb-1">Contrato {{ contrato.codigo_contrato }}</h3>
-        <p class="text-muted mb-0">
-            Cliente: <strong>{{ contrato.cliente.nome_completo }}</strong> • {{ contrato.cliente.cpf }} <br>
-            Status: <strong>{{ contrato.get_status_display|default:contrato.status }}</strong>
-        </p>
-    </div>
 
-    <div class="d-flex gap-2">
-        <a href="{% url 'emprestimos:contrato_pdf' contrato.id %}" target="_blank" class="btn btn-primary">
-            <i class="bi bi-printer"></i> Imprimir
-        </a>
-        {% if contrato.status == "ATIVO" or contrato.status == "ATRASADO" %}
-            <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#modalRenegociar">Renegociar</button>
-        {% endif %}
-    </div>
+<div class="d-flex align-items-start justify-content-between gap-2">
+  <div>
+    <h3 class="mb-1">Contrato {{ contrato.codigo_contrato }}</h3>
+    <p class="text-muted mb-0">
+      Cliente: <strong>{{ contrato.cliente.nome_completo }}</strong> • {{ contrato.cliente.cpf }} <br>
+      Status: <strong>{{ contrato.status }}</strong>
+    </p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'emprestimos:contrato_pdf' contrato.id %}" target="_blank" class="btn btn-primary">Imprimir</a>
+  </div>
 </div>
 
 <hr class="my-3">
 
-<div class="row g-3 mb-4 text-center">
-    <div class="col-md-3">
-        <div class="card p-2 bg-light border-0">
-            <small class="text-muted fw-bold">VALOR EMPRESTADO</small>
-            <div class="fs-5 fw-bold">R$ {{ contrato.valor_emprestado|floatformat:2|localize }}</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card p-2 bg-light border-0">
-            <small class="text-muted fw-bold">VALOR DA PARCELA</small>
-            <div class="fs-5 fw-bold text-primary">R$ {{ contrato.valor_parcela_aplicada|floatformat:2|localize }}</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card p-2 bg-light border-0">
-            <small class="text-muted fw-bold">TOTAL DO CONTRATO</small>
-            <div class="fs-5 fw-bold">R$ {{ contrato.total_contrato|floatformat:2|localize }}</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card p-2 bg-light border-0">
-            <small class="text-muted fw-bold">SALDO DEVEDOR</small>
-            <div class="fs-5 fw-bold text-danger">R$ {{ contrato.saldo_devedor|floatformat:2|localize }}</div>
-        </div>
-    </div>
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Vencimento</th>
+        <th class="text-end">Valor</th>
+        <th>Status</th>
+        <th class="text-end">Ação</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in parcelas %}
+        <tr class="{% if p.status == 'ABERTA' and p.vencimento < hoje %}table-danger text-danger{% endif %}">
+          <td>{{ p.numero }}</td>
+          <td>{{ p.vencimento|date:"d/m/Y" }}</td>
+          <td class="text-end">R$ {{ p.valor|floatformat:2|localize }}</td>
+          <td>
+            {% if p.status == "ABERTA" %}
+                {% if p.vencimento < hoje %}
+                    <span class="badge bg-danger text-white">PARCELA EM ATRASO</span>
+                {% else %}
+                    <span class="badge bg-warning text-dark">EM ABERTO</span>
+                {% endif %}
+            {% else %}
+                <span class="badge bg-success">PAGO</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if p.status == "ABERTA" %}
+              <button type="button" class="btn btn-sm {% if p.vencimento < hoje %}btn-danger{% else %}btn-success{% endif %}" 
+                      data-bs-toggle="modal" data-bs-target="#modalPagarParcela"
+                      data-id="{{ p.id }}" data-numero="{{ p.numero }}" data-valor="{{ p.valor|floatformat:2 }}"
+                      data-atrasada="{% if p.vencimento < hoje %}true{% else %}false{% endif %}">
+                Pagar
+              </button>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 
-<div class="card shadow-sm border-0">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th class="ps-3">Nº</th>
-                        <th>Vencimento</th>
-                        <th class="text-end">Valor Nominal</th>
-                        <th class="text-center">Status</th>
-                        <th class="text-end pe-3">Ação</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for p in parcelas %}
-                    <tr class="{% if p.status == 'ABERTA' and p.vencimento < hoje %}table-danger text-danger fw-bold{% endif %}">
-                        <td class="ps-3">{{ p.numero }}</td>
-                        <td>{{ p.vencimento|date:"d/m/Y" }}</td>
-                        <td class="text-end">R$ {{ p.valor|floatformat:2|localize }}</td>
-                        <td class="text-center">
-                            {% if p.status == "ABERTA" %}
-                                {% if p.vencimento < hoje %}
-                                    <span class="badge bg-danger">PARCELA EM ATRASO</span>
-                                {% else %}
-                                    <span class="badge bg-warning text-dark">EM ABERTO</span>
-                                {% endif %}
-                            {% elif p.status == "PAGO" %}
-                                <span class="badge bg-success">PAGO</span>
-                            {% else %}
-                                <span class="badge bg-secondary">{{ p.status }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end pe-3">
-                            {% if p.status == "ABERTA" and contrato.status != "CANCELADO" %}
-                            <button type="button" 
-                                    class="btn btn-sm {% if p.vencimento < hoje %}btn-danger{% else %}btn-success{% endif %}"
-                                    data-bs-toggle="modal" 
-                                    data-bs-target="#modalPagarParcela"
-                                    data-id="{{ p.id }}"
-                                    data-numero="{{ p.numero }}"
-                                    data-valor="{{ p.valor|floatformat:2 }}"
-                                    data-atrasada="{% if p.vencimento < hoje %}true{% else %}false{% endif %}">
-                                <i class="bi bi-cash"></i> Pagar
-                            </button>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
+{# MODAL DE PAGAMENTO #}
 <div class="modal fade" id="modalPagarParcela" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title">Efetuar Baixa de Parcela</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title">Baixa de Pagamento</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="formPagarParcela">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="text-center mb-3">
+             <span class="text-muted small">PARCELA</span>
+             <h4 id="pg_numero_display">--</h4>
+          </div>
+          <div class="card bg-light border-0 mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between mb-2">
+                <span>Valor Original:</span>
+                <span class="fw-bold">R$ <span id="pg_valor_base">0,00</span></span>
+              </div>
+              <div id="info-atraso" style="display: none;">
+                <div class="d-flex justify-content-between text-danger mb-2">
+                  <span>Multa:</span>
+                  <span class="fw-bold">+ R$ <span id="pg_multa">0,00</span></span>
+                </div>
+                <div class="d-flex justify-content-between text-danger mb-2">
+                  <span>Juros Mora:</span>
+                  <span class="fw-bold">+ R$ <span id="pg_juros">0,00</span></span>
+                </div>
+              </div>
+              <hr>
+              <div class="d-flex justify-content-between fs-5 fw-bold text-success">
+                <span>TOTAL:</span>
+                <span>R$ <span id="pg_total">0,00</span></span>
+              </div>
             </div>
-            <form method="post" id="formPagarParcela">
-                {% csrf_token %}
-                <div class="modal-body">
-                    <div class="text-center mb-3">
-                        <small class="text-muted">PARCELA NÚMERO</small>
-                        <h4 id="modal_numero" class="mb-0">--</h4>
-                    </div>
-
-                    <div class="card bg-light border-0 mb-3">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Valor da Parcela:</span>
-                                <span class="fw-bold">R$ <span id="modal_valor_original">0,00</span></span>
-                            </div>
-                            <div id="container_atraso" style="display: none;">
-                                <div class="d-flex justify-content-between text-danger mb-2">
-                                    <span>Multa (Atraso):</span>
-                                    <span class="fw-bold">+ R$ <span id="modal_multa">0,00</span></span>
-                                </div>
-                                <div class="d-flex justify-content-between text-danger mb-2">
-                                    <span>Juros de Mora:</span>
-                                    <span class="fw-bold">+ R$ <span id="modal_juros">0,00</span></span>
-                                </div>
-                            </div>
-                            <hr>
-                            <div class="d-flex justify-content-between fs-4 fw-bold text-success">
-                                <span>TOTAL A RECEBER:</span>
-                                <span>R$ <span id="modal_total">0,00</span></span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Senha de Confirmação</label>
-                        <input type="password" name="senha" id="senha_confirmacao" class="form-control text-center form-control-lg" placeholder="****" required>
-                    </div>
-                </div>
-                <div class="modal-footer bg-light border-0">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-success px-4 fw-bold">Confirmar Pagamento</button>
-                </div>
-            </form>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold small">SENHA DE CONFIRMAÇÃO</label>
+            <input type="password" name="senha" id="senha_pagamento" class="form-control text-center" required>
+          </div>
         </div>
+        <div class="modal-footer border-0 bg-light">
+          <button type="submit" class="btn btn-success w-100 fw-bold">CONFIRMAR PAGAMENTO</button>
+        </div>
+      </form>
     </div>
+  </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    const modalPagar = document.getElementById('modalPagarParcela');
+  document.addEventListener('DOMContentLoaded', function () {
+    var modalPagar = document.getElementById('modalPagarParcela');
     modalPagar.addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        const id = button.getAttribute('data-id');
-        const numero = button.getAttribute('data-numero');
-        const valorOriginal = button.getAttribute('data-valor');
-        const estaAtrasada = button.getAttribute('data-atrasada') === 'true';
+      var button = event.relatedTarget;
+      var id = button.getAttribute('data-id');
+      var estaAtrasada = button.getAttribute('data-atrasada') === 'true';
+      
+      document.getElementById('pg_numero_display').textContent = button.getAttribute('data-numero');
+      document.getElementById('senha_pagamento').value = '';
 
-        // Preenchimento Base
-        document.getElementById('modal_numero').textContent = numero;
-        document.getElementById('modal_valor_original').textContent = valorOriginal;
-        document.getElementById('senha_confirmacao').value = '';
-        
-        const divAtraso = document.getElementById('container_atraso');
-        const spanTotal = document.getElementById('modal_total');
-
-        if (estaAtrasada) {
-            divAtraso.style.display = 'block';
-            spanTotal.textContent = "Calculando...";
-            
-            // Chama a rota AJAX para pegar juros e multa atualizados
-            fetch(`/emprestimos/parcela/${id}/calcular-valores/`)
-                .then(r => r.json())
-                .then(data => {
-                    document.getElementById('modal_multa').textContent = data.multa;
-                    document.getElementById('modal_juros').textContent = data.juros;
-                    spanTotal.textContent = data.total;
-                })
-                .catch(() => {
-                    spanTotal.textContent = valorOriginal;
-                });
-        } else {
-            divAtraso.style.display = 'none';
-            spanTotal.textContent = valorOriginal;
-        }
-
-        // Define a URL do POST
-        document.getElementById('formPagarParcela').action = `/emprestimos/parcela/${id}/pagar/`;
+      if (estaAtrasada) {
+          document.getElementById('info-atraso').style.display = 'block';
+          fetch(`/emprestimos/parcela/${id}/calcular-valores/`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('pg_valor_base').textContent = data.valor_original.replace('.', ',');
+                document.getElementById('pg_multa').textContent = data.multa.replace('.', ',');
+                document.getElementById('pg_juros').textContent = data.juros.replace('.', ',');
+                document.getElementById('pg_total').textContent = data.total.replace('.', ',');
+            });
+      } else {
+          document.getElementById('info-atraso').style.display = 'none';
+          document.getElementById('pg_valor_base').textContent = button.getAttribute('data-valor').replace('.', ',');
+          document.getElementById('pg_total').textContent = button.getAttribute('data-valor').replace('.', ',');
+      }
+      document.getElementById('formPagarParcela').action = '/emprestimos/parcela/' + id + '/pagar/';
     });
-
-    // Foco automático na senha
-    modalPagar.addEventListener('shown.bs.modal', () => {
-        document.getElementById('senha_confirmacao').focus();
-    });
-});
+  });
 </script>
-
 {% endblock %}

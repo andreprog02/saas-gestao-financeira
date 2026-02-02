@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 import io
-
+from django.http import JsonResponse
 # Imports de Contas (ESSENCIAL PARA A CONTA CORRENTE)
 from contas.models import ContaCorrente, MovimentacaoConta
 
@@ -656,4 +656,16 @@ def calcular_valores_parcela_json(request, parcela_id):
         'multa': f"{dados['multa']:.2f}",
         'juros': f"{dados['juros']:.2f}",
         'total': f"{dados['valor_total']:.2f}"
+    })
+
+def calcular_valores_parcela_ajax(request, parcela_id):
+    parcela = get_object_or_404(Parcela, id=parcela_id)
+    # Chama a propriedade do model que calcula Multa e Juros em tempo real
+    dados = parcela.dados_atualizados  
+    
+    return JsonResponse({
+        'valor_original': f"{dados['valor_original']:.2f}",
+        'multa': f"{dados['multa']:.2f}",
+        'juros': f"{dados['juros']:.2f}",
+        'total': f"{dados['total']:.2f}"
     })
