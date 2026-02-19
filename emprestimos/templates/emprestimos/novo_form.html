@@ -24,7 +24,18 @@
                     <div class="card-body p-4">
                         {{ form.cliente_id }}
 
-                        <h6 class="text-muted text-uppercase small fw-bold mb-3">Valores e Prazos</h6>
+                        <div class="mb-4">
+                            <label class="form-label fw-bold text-dark">
+                                <i class="bi bi-people me-1"></i> Parceiro / Recebedor (Opcional)
+                            </label>
+                            {{ form.parceiro }}
+                            <div class="form-text text-muted small">
+                                Selecione o parceiro caso haja pagamento de comissão ou indicação.
+                            </div>
+                            <div class="text-danger small">{{ form.parceiro.errors }}</div>
+                        </div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-3 border-bottom pb-2">Valores e Prazos</h6>
+                        
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold text-dark">Valor do Empréstimo</label>

@@ -32,6 +32,8 @@ urlpatterns = [
     # --- Renegociação ---
     path("renegociar/<int:emprestimo_id>/", renegociar, name="renegociar"),
 
+    path('contrato/<int:pk>/parceiro/', views.vincular_parceiro, name='vincular_parceiro'),
+
     # --- TODO: Views ainda não implementadas no views.py ---
     # Descomente estas linhas apenas quando criar as funções correspondentes no views.py
     

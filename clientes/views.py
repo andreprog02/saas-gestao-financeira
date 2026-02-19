@@ -25,20 +25,20 @@ def clientes_lista(request):
     return render(request, "clientes/lista.html", {"page_obj": page_obj, "q": q})
 
 
-def clientes_novo(request):
-    if request.method == "POST":
+def novo_cliente(request):
+    if request.method == 'POST':
         form = ClienteForm(request.POST)
         if form.is_valid():
-            cliente = form.save()
-            # Opcional: Criar conta automaticamente ao cadastrar cliente
-            ContaCorrente.objects.get_or_create(cliente=cliente)
-            
-            messages.success(request, "Cliente cadastrado com sucesso.")
-            return redirect("clientes:lista")
+            form.save()
+            return redirect('clientes:lista')  # <--- Corrigido o nome da rota
+        else:
+            print(form.errors) # Pode manter o print para debug se quiser
     else:
         form = ClienteForm()
-
-    return render(request, "clientes/form.html", {"form": form, "titulo": "Novo Cliente"})
+    
+    # MUDANÇA AQUI: Usamos 'clientes/form.html' em vez de 'novo.html'
+    # E passamos um título para a página saber que é um cadastro novo
+    return render(request, 'clientes/form.html', {'form': form, 'titulo': 'Novo Cliente'})
 
 
 def clientes_editar(request, cliente_id: int):

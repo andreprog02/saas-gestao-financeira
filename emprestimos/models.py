@@ -35,6 +35,17 @@ class Emprestimo(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="emprestimos")
     codigo_contrato = models.CharField(max_length=20, unique=True, db_index=True)
 
+    # === NOVO CAMPO: PARCEIRO ===
+    parceiro = models.ForeignKey(
+        Cliente,
+        on_delete=models.SET_NULL, # Se excluir o parceiro, o empréstimo continua existindo
+        null=True,
+        blank=True, # É opcional (nem todo empréstimo tem parceiro)
+        related_name="emprestimos_parceiro", # Nome para diferenciar do cliente devedor
+        verbose_name="Parceiro / Recebedor"
+    )
+    # ============================
+
     valor_emprestado = models.DecimalField(
         max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))]
     )
@@ -137,12 +148,7 @@ class Parcela(models.Model):
     @property
     def dados_atualizados(self):
         """
-        Retorna um dicionário com:
-        - valor_original
-        - multa
-        - juros
-        - dias_atraso
-        - total
+        Retorna um dicionário com todos os dados calculados.
         """
         hoje = timezone.localdate()
         
@@ -180,11 +186,17 @@ class Parcela(models.Model):
             'total': total.quantize(Decimal("0.01"))
         }
 
+    # === A CORREÇÃO ESTÁ AQUI ===
+    @property
+    def valor_atual(self):
+        return self.dados_atualizados['total']
+    # ============================
+
     @transaction.atomic
     def marcar_como_paga(self, valor_pago=None, data_pagamento=None):
         self.status = ParcelaStatus.PAGA
         self.data_pagamento = data_pagamento or timezone.localdate()
-        self.valor_pago = valor_pago if valor_pago is not None else self.valor
+        self.valor_pago = valor_pago if valor_pago is not None else self.valor_atual
         self.save(update_fields=["status", "data_pagamento", "valor_pago", "atualizado_em"])
 
         emp = self.emprestimo

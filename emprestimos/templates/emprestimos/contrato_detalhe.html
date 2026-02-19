@@ -8,16 +8,25 @@
     <p class="text-muted mb-0">
       Cliente: <strong>{{ contrato.cliente.nome_completo }}</strong> • {{ contrato.cliente.cpf }} <br>
       Status: <strong>{{ contrato.status }}</strong>
-    </p>
+      
+      {% if contrato.parceiro %}
+      <br>
+      <span class="text-primary">
+          <i class="bi bi-people-fill"></i> Parceiro/Recebedor: <strong>{{ contrato.parceiro.nome_completo }}</strong>
+      </span>
+      {% endif %}
+      </p>
   </div>
+  
   <div class="d-flex gap-2">
+    <button type="button" class="btn btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#modalParceiro">
+        <i class="bi bi-person-gear me-1"></i> Parceiro
+    </button>
     {% if contrato.status == "ATIVO" or contrato.status == "ATRASADO" %}
     <button type="button" class="btn btn-warning text-dark fw-bold" data-bs-toggle="modal" data-bs-target="#modalRenegociar">
         <i class="bi bi-arrow-repeat me-1"></i> Renegociar
     </button>
     {% endif %}
-
-    {# <a href="{% url 'emprestimos:contrato_pdf' contrato.id %}" target="_blank" class="btn btn-primary">Imprimir</a> #}
   </div>
 </div>
 
@@ -67,7 +76,7 @@
   </table>
 </div>
 
-{# --- MODAL DE PAGAMENTO (JÁ EXISTIA) --- #}
+{# --- MODAL DE PAGAMENTO --- #}
 <div class="modal fade" id="modalPagarParcela" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
@@ -118,7 +127,7 @@
   </div>
 </div>
 
-{# --- MODAL DE RENEGOCIAÇÃO (ADICIONADO DE VOLTA) --- #}
+{# --- MODAL DE RENEGOCIAÇÃO --- #}
 <div class="modal fade" id="modalRenegociar" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content border-0 shadow">
@@ -131,17 +140,16 @@
                 <div class="modal-body">
                     <div class="alert alert-warning small mb-3">
                         <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                        Atenção: Esta ação liquidará as parcelas em aberto atuais e criará um <strong>novo contrato</strong> com o saldo devedor restante.
+                        Atenção: Esta ação liquidará as parcelas em aberto e criará um novo contrato.
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label fw-bold">Valor de Entrada (R$)</label>
                         <input type="text" name="entrada" class="form-control money-mask" placeholder="0,00">
-                        <div class="form-text">Opcional. Abaterá do saldo devedor antes do novo cálculo.</div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Novo Vencimento (1ª Parcela)</label>
+                        <label class="form-label fw-bold">Novo Vencimento</label>
                         <input type="date" name="novo_vencimento" class="form-control" required>
                     </div>
 
@@ -158,13 +166,48 @@
                                 </span>
                                 <input type="number" step="0.01" name="nova_taxa" id="inputNovaTaxa" class="form-control" value="{{ contrato.taxa_juros_mensal|unlocalize }}" readonly>
                             </div>
-                            <div class="form-text small" style="font-size: 0.75rem;">Desmarque p/ mudar a taxa.</div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer border-0">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-warning fw-bold text-dark">Confirmar Renegociação</button>
+                    <button type="submit" class="btn btn-warning fw-bold text-dark">Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# --- NOVO MODAL: VINCULAR PARCEIRO --- #}
+<div class="modal fade" id="modalParceiro" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-person-gear"></i> Gerenciar Parceiro</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{% url 'emprestimos:vincular_parceiro' contrato.id %}" method="POST">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <p class="text-muted small">
+                        Vincule um advogado, escritório de cobrança ou parceiro comercial a este contrato.
+                    </p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Selecionar Parceiro</label>
+                        <select name="parceiro_id" class="form-select form-select-lg">
+                            <option value="">-- Sem Parceiro (Remover) --</option>
+                            {% for c in todos_clientes %}
+                                <option value="{{ c.id }}" {% if contrato.parceiro_id == c.id %}selected{% endif %}>
+                                    {{ c.nome_completo }} ({{ c.cpf }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary fw-bold">Salvar Alteração</button>
                 </div>
             </form>
         </div>
@@ -172,14 +215,12 @@
 </div>
 
 <script>
-  // Função para controlar o campo de taxa da renegociação
+  // Script para controle da taxa (mantido)
   function toggleNovaTaxa() {
       const check = document.getElementById('checkTaxaAntiga');
       const input = document.getElementById('inputNovaTaxa');
       if (check.checked) {
           input.readOnly = true;
-          // Se quiser resetar para o valor original visualmente:
-          // input.value = "{{ contrato.taxa_juros_mensal|unlocalize }}"; 
       } else {
           input.readOnly = false;
           input.focus();
@@ -187,38 +228,38 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    // Script do Modal de Pagamento
+    // Mantido script do pagamento
     var modalPagar = document.getElementById('modalPagarParcela');
     if (modalPagar) {
         modalPagar.addEventListener('show.bs.modal', function (event) {
-        var button = event.relatedTarget;
-        var id = button.getAttribute('data-id');
-        var estaAtrasada = button.getAttribute('data-atrasada') === 'true';
-        
-        document.getElementById('pg_numero_display').textContent = button.getAttribute('data-numero');
-        document.getElementById('senha_pagamento').value = '';
+            // (Código do modal de pagamento continua igual...)
+            var button = event.relatedTarget;
+            var id = button.getAttribute('data-id');
+            var estaAtrasada = button.getAttribute('data-atrasada') === 'true';
+            
+            document.getElementById('pg_numero_display').textContent = button.getAttribute('data-numero');
+            document.getElementById('senha_pagamento').value = '';
 
-        const spanTotal = document.getElementById('pg_total');
-        const spanBase = document.getElementById('pg_valor_base');
+            const spanTotal = document.getElementById('pg_total');
+            const spanBase = document.getElementById('pg_valor_base');
 
-        if (estaAtrasada) {
-            document.getElementById('info-atraso').style.display = 'block';
-            spanTotal.textContent = "Calculando...";
-            // Chama o AJAX para calcular multa/juros atualizados
-            fetch(`/emprestimos/parcela/${id}/calcular-valores/`)
-                .then(r => r.json())
-                .then(data => {
-                    spanBase.textContent = data.valor_original.replace('.', ',');
-                    document.getElementById('pg_multa').textContent = data.multa.replace('.', ',');
-                    document.getElementById('pg_juros').textContent = data.juros.replace('.', ',');
-                    spanTotal.textContent = data.total.replace('.', ',');
-                });
-        } else {
-            document.getElementById('info-atraso').style.display = 'none';
-            spanBase.textContent = button.getAttribute('data-valor').replace('.', ',');
-            spanTotal.textContent = button.getAttribute('data-valor').replace('.', ',');
-        }
-        document.getElementById('formPagarParcela').action = '/emprestimos/parcela/' + id + '/pagar/';
+            if (estaAtrasada) {
+                document.getElementById('info-atraso').style.display = 'block';
+                spanTotal.textContent = "Calculando...";
+                fetch(`/emprestimos/parcela/${id}/calcular-valores/`)
+                    .then(r => r.json())
+                    .then(data => {
+                        spanBase.textContent = data.valor_original.replace('.', ',');
+                        document.getElementById('pg_multa').textContent = data.multa.replace('.', ',');
+                        document.getElementById('pg_juros').textContent = data.juros.replace('.', ',');
+                        spanTotal.textContent = data.total.replace('.', ',');
+                    });
+            } else {
+                document.getElementById('info-atraso').style.display = 'none';
+                spanBase.textContent = button.getAttribute('data-valor').replace('.', ',');
+                spanTotal.textContent = button.getAttribute('data-valor').replace('.', ',');
+            }
+            document.getElementById('formPagarParcela').action = '/emprestimos/parcela/' + id + '/pagar/';
         });
     }
   });

@@ -29,3 +29,33 @@ class HistoricoCobranca(models.Model):
 
     def __str__(self):
         return f"{self.cliente} - {self.data_evento.strftime('%d/%m/%Y')}"
+    
+
+
+class CarteiraCobranca(models.Model):
+    cliente_devedor = models.OneToOneField(
+        Cliente, 
+        on_delete=models.CASCADE, 
+        related_name='regra_cobranca',
+        verbose_name="Cliente Devedor"
+    )
+    profissional = models.ForeignKey(
+        Cliente, 
+        on_delete=models.PROTECT, 
+        related_name='carteira_profissional',
+        verbose_name="Advogado/Cobrador"
+    )
+    percentual_comissao = models.DecimalField(
+        "Percentual (%)",
+        max_digits=5, 
+        decimal_places=2,
+        help_text="Ex: Digite 20.00 para 20%"
+    )
+    ativo = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.cliente_devedor} -> {self.profissional} ({self.percentual_comissao}%)"
+
+    class Meta:
+        verbose_name = "Regra de Split/Honorários"
+        verbose_name_plural = "Regras de Split/Honorários"

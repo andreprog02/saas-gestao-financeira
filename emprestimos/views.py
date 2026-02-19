@@ -15,6 +15,16 @@ from .forms import EmprestimoForm, BuscaClienteForm
 from clientes.models import Cliente
 from financeiro.models import Transacao
 
+
+
+
+
+
+from .models import Parcela, ParcelaStatus, ContratoLog
+from financeiro.models import Transacao
+from contas.models import ContaCorrente, MovimentacaoConta
+from cobranca.models import CarteiraCobranca
+
 # === CORREÇÃO AQUI: Importar do app 'contas' (o sistema real) ===
 from contas.models import ContaCorrente, MovimentacaoConta 
 
@@ -33,9 +43,14 @@ def lista_contratos(request):
 def contrato_detalhe(request, pk):
     contrato = get_object_or_404(Emprestimo, pk=pk)
     parcelas = contrato.parcelas.all().order_by('numero')
+    
+    # Adicionamos isso para popular o Modal de Parceiro
+    todos_clientes = Cliente.objects.all().order_by('nome_completo')
+
     return render(request, "emprestimos/contrato_detalhe.html", {
         "contrato": contrato,
         "parcelas": parcelas,
+        "todos_clientes": todos_clientes, # <--- Enviando a lista para o template
         "hoje": timezone.localdate(),
     })
 
@@ -53,67 +68,105 @@ def calcular_valores_parcela_ajax(request, parcela_id):
 @login_required
 def pagar_parcela(request, pk):
     parcela = get_object_or_404(Parcela, pk=pk)
+    contrato = parcela.emprestimo
     
+    # 1. Verifica se tem Parceiro vinculado no contrato (Lógica Nova)
+    parceiro = contrato.parceiro
+    tem_split = parceiro is not None
+    
+    # Defina aqui a porcentagem padrão do parceiro (ex: 10% ou 20%)
+    PORCENTAGEM_COMISSAO = Decimal('10.00') 
+
+    # 2. Cálculos Prévios
+    valor_total = parcela.valor_atual
+    valor_honorarios = Decimal('0.00')
+    valor_empresa = valor_total
+    nome_profissional = parceiro.nome_completo if parceiro else ""
+
+    if tem_split:
+        valor_honorarios = valor_total * (PORCENTAGEM_COMISSAO / Decimal('100'))
+        valor_honorarios = valor_honorarios.quantize(Decimal('0.01'))
+        valor_empresa = valor_total - valor_honorarios
+
     if request.method == "POST":
         senha = request.POST.get("senha")
         
-        if senha != "1234": 
-            messages.error(request, "Senha de confirmação incorreta.")
-            return redirect("emprestimos:contrato_detalhe", pk=parcela.emprestimo.id)
+        # === CORREÇÃO 1: SENHA FIXA "1234" ===
+        if senha != "1234":
+             messages.error(request, "Senha incorreta. Tente 1234.")
+             return redirect('emprestimos:contrato_detalhe', pk=contrato.id)
+        # =====================================
 
-        if parcela.status == ParcelaStatus.PAGA:
-            messages.warning(request, "Esta parcela já foi paga.")
-            return redirect("emprestimos:contrato_detalhe", pk=parcela.emprestimo.id)
+        try:
+            with transaction.atomic():
+                # A. Baixa a Parcela
+                parcela.status = ParcelaStatus.PAGA
+                parcela.data_pagamento = timezone.now()
+                parcela.valor_pago = valor_total
+                parcela.save()
 
-        with transaction.atomic():
-            dados = parcela.dados_atualizados
-            valor_final = dados['total']
-
-            # 1. Baixa a Parcela
-            parcela.status = ParcelaStatus.PAGA
-            parcela.data_pagamento = timezone.now()
-            parcela.valor_pago = valor_final
-            parcela.save()
-
-            # 2. Caixa da Empresa (Entrada de Dinheiro)
-            Transacao.objects.create(
-                tipo='PAGAMENTO_ENTRADA',
-                valor=valor_final,
-                descricao=f"Recebimento Parcela {parcela.numero} - {parcela.emprestimo.codigo_contrato}",
-                usuario=request.user,
-                emprestimo=parcela.emprestimo
-            )
-
-            # 3. Conta Corrente do Cliente (DÉBITO - O cliente pagou)
-            try:
-                # Pega a conta REAL do cliente (do app contas)
-                conta_cliente, created = ContaCorrente.objects.get_or_create(cliente=parcela.emprestimo.cliente)
+                # B. Registra Entrada no Livro Caixa
+                descricao_cx = f"{contrato.cliente.nome_completo} pagou {valor_total}"
+                if valor_honorarios > 0:
+                    descricao_cx += f" (Split: {valor_honorarios} para {nome_profissional})"
                 
-                # Cria a movimentação (isso atualiza o saldo automaticamente no model MovimentacaoConta)
-                MovimentacaoConta.objects.create(
-                    conta=conta_cliente,
-                    tipo='DEBITO',
-                    origem='PAGAMENTO_PARCELA',
-                    valor=valor_final,
-                    descricao=f"Pgto Parcela {parcela.numero} - Contrato {parcela.emprestimo.codigo_contrato}",
-                    data=timezone.now(),
-                    parcela=parcela
+                Transacao.objects.create(
+                    tipo='ENTRADA', # Ajuste se seu model usar outro termo (ex: PAGAMENTO_ENTRADA)
+                    valor=valor_total,
+                    descricao=descricao_cx + f" - Parc. {parcela.numero}/{contrato.qtd_parcelas}",
+                    usuario=request.user,
+                    emprestimo=contrato
                 )
-            except Exception as e:
-                print(f"ERRO CRÍTICO AO DEBITAR: {e}")
 
-            # 4. Log do Sistema
-            ContratoLog.objects.create(
-                contrato=parcela.emprestimo,
-                acao="PAGAMENTO",
-                usuario=request.user,
-                motivo=f"Parcela {parcela.numero} paga via sistema.",
-                observacao=f"Valor total: R$ {valor_final}"
-            )
+                # C. Se tiver Parceiro, faz o repasse (Split)
+                if valor_honorarios > 0 and parceiro:
+                    # 1. Saída do Caixa da Empresa (Despesa)
+                    Transacao.objects.create(
+                        tipo='SAIDA', # Ajuste se seu model usar 'DESPESA'
+                        valor=-valor_honorarios,
+                        descricao=f"Comissão Parceiro - {nome_profissional} (Ref. Contrato {contrato.codigo_contrato})",
+                        usuario=request.user
+                    )
 
-            messages.success(request, f"Parcela {parcela.numero} paga e debitada da conta do cliente!")
+                    # 2. Crédito na conta do Parceiro (Carteira Virtual)
+                    conta_prof, _ = ContaCorrente.objects.get_or_create(cliente=parceiro)
+                    MovimentacaoConta.objects.create(
+                        conta=conta_prof,
+                        tipo='CREDITO',
+                        origem='DEPOSITO',
+                        valor=valor_honorarios,
+                        descricao=f"Comissão {PORCENTAGEM_COMISSAO}% - Ref. Cliente {contrato.cliente.nome_completo}",
+                        data=timezone.now()
+                    )
 
-    return redirect("emprestimos:contrato_detalhe", pk=parcela.emprestimo.id)
+                # D. Logs
+                ContratoLog.objects.create(
+                    contrato=contrato,
+                    acao="PAGO",
+                    usuario=request.user,
+                    motivo=f"Parcela {parcela.numero} quitada.",
+                    observacao=f"Valor: {valor_total} | Comissao: {valor_honorarios}"
+                )
+                
+                messages.success(request, f"Pagamento confirmado! R$ {valor_honorarios} enviado para {nome_profissional}.")
+                return redirect("emprestimos:contrato_detalhe", pk=contrato.id)
+
+        except Exception as e:
+            messages.error(request, f"Erro ao processar: {e}")
+            # Se der erro, volta para a tela do contrato em vez de renderizar form quebrado
+            return redirect("emprestimos:contrato_detalhe", pk=contrato.id)
+
+    # Contexto para o Modal (caso a view seja chamada via GET, embora o modal use JS)
+    context = {
+        'parcela': parcela,
+        'valor_total': valor_total,
+        'tem_split': 'true' if tem_split else 'false',
+        'nome_profissional': nome_profissional,
+        'valor_honorarios': valor_honorarios,
+        'percentual': PORCENTAGEM_COMISSAO,
+    }
+    return render(request, "emprestimos/pagar_parcela.html", context)
+
 
 @login_required
 def novo_emprestimo_busca(request):
@@ -260,3 +313,39 @@ def vencidos(request):
     hoje = timezone.localdate()
     parcelas = Parcela.objects.filter(status=ParcelaStatus.ABERTA, vencimento__lt=hoje).order_by('vencimento')
     return render(request, "emprestimos/vencidos.html", {"parcelas": parcelas, "hoje": hoje})
+
+
+@login_required
+def vincular_parceiro(request, pk):
+    contrato = get_object_or_404(Emprestimo, pk=pk)
+    
+    if request.method == "POST":
+        parceiro_id = request.POST.get("parceiro_id")
+        
+        # Lógica para auditoria (Log)
+        antigo_parceiro = contrato.parceiro.nome_completo if contrato.parceiro else "Nenhum"
+        
+        if parceiro_id:
+            novo_parceiro = get_object_or_404(Cliente, id=parceiro_id)
+            contrato.parceiro = novo_parceiro
+            nome_novo = novo_parceiro.nome_completo
+            msg = f"Parceiro alterado de {antigo_parceiro} para {nome_novo}"
+        else:
+            contrato.parceiro = None
+            nome_novo = "Nenhum"
+            msg = f"Parceiro removido (Era: {antigo_parceiro})"
+            
+        contrato.save()
+        
+        # Cria Log
+        ContratoLog.objects.create(
+            contrato=contrato,
+            acao="RENEGOCIADO", # Ou crie um tipo 'ALTERACAO_CADASTRO' se preferir
+            usuario=request.user,
+            motivo="Alteração de Parceiro/Recebedor",
+            observacao=msg
+        )
+        
+        messages.success(request, f"Sucesso: {msg}")
+        
+    return redirect("emprestimos:contrato_detalhe", pk=contrato.id)

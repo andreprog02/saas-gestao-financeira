@@ -16,7 +16,6 @@ class BuscaClienteForm(forms.Form):
     )
 
 class EmprestimoForm(forms.ModelForm):
-    # --- CORREÇÃO PRINCIPAL ---
     # Redefinimos o campo como CharField (Texto) para o Django aceitar o "R$"
     valor_emprestado = forms.CharField(
         label='Valor do Empréstimo',
@@ -29,6 +28,7 @@ class EmprestimoForm(forms.ModelForm):
     class Meta:
         model = Emprestimo
         fields = [
+            'parceiro', # <--- NOVO CAMPO AQUI
             'valor_emprestado', 
             'taxa_juros_mensal', 
             'qtd_parcelas', 
@@ -39,6 +39,9 @@ class EmprestimoForm(forms.ModelForm):
             'observacoes'
         ]
         widgets = {
+            # <--- WIDGET DO PARCEIRO (Dropdown do Bootstrap)
+            'parceiro': forms.Select(attrs={'class': 'form-select'}), 
+            
             'taxa_juros_mensal': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'value': '5.00'}),
             'qtd_parcelas': forms.NumberInput(attrs={'class': 'form-control', 'value': '1'}),
             'primeiro_vencimento': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
@@ -48,6 +51,7 @@ class EmprestimoForm(forms.ModelForm):
             'tem_multa_atraso': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
         labels = {
+            'parceiro': 'Parceiro / Recebedor (Opcional)', # <--- LABEL
             'taxa_juros_mensal': 'Taxa de Juros (%)',
             'qtd_parcelas': 'Nº de Parcelas',
             'primeiro_vencimento': '1º Vencimento',
@@ -73,4 +77,3 @@ class EmprestimoForm(forms.ModelForm):
                 raise forms.ValidationError("Valor inválido. Use o formato 0,00")
         
         return valor
-    

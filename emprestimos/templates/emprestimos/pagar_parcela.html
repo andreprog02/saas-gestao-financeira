@@ -1,18 +1,83 @@
-{% extends "base.html" %}
-{% load humanize l10n %}
+{% extends 'base.html' %}
+
 {% block content %}
-<h3>Pagar parcela</h3>
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h4>Baixar Parcela {{ parcela.numero }}</h4>
+        </div>
+        <div class="card-body">
+            <h5 class="card-title">Cliente: {{ parcela.emprestimo.cliente.nome }}</h5>
+            <p class="card-text display-4">R$ {{ valor_total }}</p>
 
-<div class="card p-3">
-  <p class="mb-1"><strong>Contrato:</strong> {{ parcela.emprestimo.codigo_contrato }}</p>
-  <p class="mb-1"><strong>Cliente:</strong> {{ parcela.emprestimo.cliente.nome_completo }}</p>
-  <p class="mb-1"><strong>Parcela:</strong> {{ parcela.numero }}</p>
-  <p class="mb-3"><strong>Valor:</strong> R$ {{ parcela.valor|floatformat:2|localize }}</p>
+            <form method="post" id="form-pagamento">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label>Senha de Confirmação:</label>
+                    <input type="password" name="senha" class="form-control" required>
+                </div>
 
-  <form method="post">
-    {% csrf_token %}
-    <button class="btn btn-success" type="submit">Confirmar pagamento</button>
-    <a class="btn btn-secondary" href="{% url 'emprestimos:contrato_detalhe' parcela.emprestimo.id %}">Cancelar</a>
-  </form>
+                <button type="button" class="btn btn-success btn-lg w-100" onclick="verificarSplit()">
+                    Confirmar Recebimento
+                </button>
+            </form>
+        </div>
+    </div>
 </div>
+
+<div class="modal fade" id="modalSplit" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title">⚠️ Divisão de Valores Automática</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Este cliente está sob cuidados jurídicos de <strong>{{ nome_profissional }}</strong>.</p>
+        <hr>
+        <p>O sistema irá lançar no Livro Caixa:</p>
+        <ul class="list-group mb-3">
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Parte da Empresa
+                <span class="badge bg-success rounded-pill">R$ {{ valor_empresa }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Honorários ({{ percentual }}%)
+                <span class="badge bg-danger rounded-pill">R$ {{ valor_honorarios }}</span>
+            </li>
+            <li class="list-group-item active d-flex justify-content-between align-items-center">
+                <strong>Total Pago pelo Cliente</strong>
+                <strong>R$ {{ valor_total }}</strong>
+            </li>
+        </ul>
+        <small class="text-muted">Descrição: "Cliente pagou {{ valor_total }} ({{ valor_empresa }} prestação + {{ valor_honorarios }} honorários)"</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="submitReal()">Autorizar e Lançar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+    function verificarSplit() {
+        // Pega a variável que veio do Django
+        var temSplit = "{{ tem_split }}"; 
+        
+        if (temSplit === 'true') {
+            // Se tem regra, abre o Modal
+            var myModal = new bootstrap.Modal(document.getElementById('modalSplit'));
+            myModal.show();
+        } else {
+            // Se não tem, envia direto
+            document.getElementById('form-pagamento').submit();
+        }
+    }
+
+    function submitReal() {
+        // Envia o formulário após clicar em Autorizar no modal
+        document.getElementById('form-pagamento').submit();
+    }
+</script>
 {% endblock %}

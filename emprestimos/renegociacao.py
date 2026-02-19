@@ -62,13 +62,10 @@ def renegociar(request, emprestimo_id):
         return redirect("emprestimos:contrato_detalhe", pk=contrato.id)
 
     # --- PASSO 1: CALCULAR DÍVIDA TOTAL (SALDO DEVEDOR) ---
-    # Buscamos as parcelas da mais antiga para a mais nova (FIFO)
     parcelas_abertas = contrato.parcelas.filter(status=ParcelaStatus.ABERTA).order_by('vencimento')
-    
     total_divida_antiga = parcelas_abertas.aggregate(total=Sum("valor")) .get("total") or Decimal("0.00")
 
-    # Calcula o valor do NOVO empréstimo (Dívida - Entrada)
-    # Ex: Dívida 30k - Entrada 10k = Novo Empréstimo de 20k
+    # Calcula o valor do NOVO empréstimo
     valor_novo_emprestimo = (total_divida_antiga - entrada).quantize(Decimal("0.01"))
 
     if valor_novo_emprestimo <= 0:
@@ -78,18 +75,16 @@ def renegociar(request, emprestimo_id):
     # Prepara a conta corrente do cliente
     conta_cliente, _ = ContaCorrente.objects.get_or_create(cliente=contrato.cliente)
 
-    # --- PASSO 2: LIQUIDAR CONTRATO ANTIGO E DEBITAR CADA PARCELA ---
-    # Aqui atendemos o requisito: "discriminando cada parcela"
+    # --- PASSO 2: LIQUIDAR CONTRATO ANTIGO ---
     
+    # 2.1. Debitar da Conta Corrente (Cliente pagando a dívida antiga)
+    # Loop para discriminar parcela por parcela no extrato do cliente
     for p in parcelas_abertas:
-        # 2.1. Marca como liquidada por renegociação
         p.status = ParcelaStatus.LIQUIDADA_RENEGOCIACAO
         p.data_pagamento = timezone.now()
-        p.valor_pago = p.valor # Considera valor cheio para fins de registro
+        p.valor_pago = p.valor
         p.save()
 
-        # 2.2. DEBITA da conta corrente (Saída de dinheiro referente à dívida antiga)
-        # Se a dívida era 30k, vai sair 30k da conta aqui, parcela por parcela.
         MovimentacaoConta.objects.create(
             conta=conta_cliente,
             tipo='DEBITO',
@@ -98,6 +93,25 @@ def renegociar(request, emprestimo_id):
             descricao=f"Liq. Renegociação - Parc. {p.numero}/{contrato.qtd_parcelas} - Ctr {contrato.codigo_contrato}",
             data=timezone.now(),
             parcela=p
+        )
+
+    # 2.2. Registrar ENTRADA no Fluxo de Caixa (Empresa recebendo a dívida antiga)
+    # Aqui entra o valor TOTAL da dívida (ex: 30k), pois contabilmente ela foi paga.
+    # O try/except é apenas uma segurança caso o campo 'usuario' não exista no model Transacao
+    try:
+        Transacao.objects.create(
+            tipo='PAGAMENTO_ENTRADA',
+            valor=total_divida_antiga,
+            descricao=f"Liq. Total p/ Renegociação - {contrato.codigo_contrato}",
+            emprestimo=contrato,
+            usuario=request.user
+        )
+    except TypeError:
+        Transacao.objects.create(
+            tipo='PAGAMENTO_ENTRADA',
+            valor=total_divida_antiga,
+            descricao=f"Liq. Total p/ Renegociação - {contrato.codigo_contrato}",
+            emprestimo=contrato
         )
 
     # Atualiza status do contrato antigo
@@ -130,7 +144,6 @@ def renegociar(request, emprestimo_id):
         observacoes=f"Renegociação do contrato {contrato.codigo_contrato}. Dívida Orig: {total_divida_antiga} | Entrada: {entrada}"
     )
 
-    # Salva as novas parcelas no banco
     Parcela.objects.bulk_create([
         Parcela(
             emprestimo=novo_contrato,
@@ -142,11 +155,9 @@ def renegociar(request, emprestimo_id):
         for p in novas_parcelas_data
     ])
 
-    # --- PASSO 4: CREDITAR O NOVO EMPRÉSTIMO NA CONTA ---
-    # Aqui entra o valor refinanciado (Ex: 20k).
-    # Matemática Final na Conta: 
-    # Saldo Inicial (10k) - Débito Dívida (30k) + Crédito Novo (20k) = 0.00
-    
+    # --- PASSO 4: REGISTRAR O NOVO EMPRÉSTIMO ---
+
+    # 4.1. Creditar na Conta Corrente do Cliente (Entrada do novo dinheiro na conta dele)
     MovimentacaoConta.objects.create(
         conta=conta_cliente,
         tipo='CREDITO',
@@ -157,17 +168,22 @@ def renegociar(request, emprestimo_id):
         emprestimo=novo_contrato
     )
 
-    # (Opcional) Registro no Caixa da Empresa (Financeiro)
-    # Se houve entrada real de dinheiro "por fora" ou se consideramos o saldo da conta como dinheiro real,
-    # podemos registrar apenas a 'Diferença' se necessário.
-    # Mas como estamos mexendo na Conta Corrente do sistema, o fluxo já está registrado lá.
-    # Se quiser registrar a ENTRADA da diferença no caixa da empresa:
-    if entrada > 0:
-         Transacao.objects.create(
-            tipo='PAGAMENTO_ENTRADA',
-            valor=entrada,
-            descricao=f"Absorção de Saldo p/ Renegociação - {contrato.codigo_contrato}",
-            emprestimo=contrato
+    # 4.2. Registrar SAÍDA (DÉBITO) no Fluxo de Caixa (Empresa emprestando novamente)
+    # Isso é o "Débito no fluxo de caixa" que estava faltando.
+    try:
+        Transacao.objects.create(
+            tipo='EMPRESTIMO_SAIDA',
+            valor=valor_novo_emprestimo, # O model Transacao converte para negativo automaticamente no save()
+            descricao=f"Saída Novo Empréstimo (Reneg) - {novo_contrato.codigo_contrato}",
+            emprestimo=novo_contrato,
+            usuario=request.user
+        )
+    except TypeError:
+        Transacao.objects.create(
+            tipo='EMPRESTIMO_SAIDA',
+            valor=valor_novo_emprestimo,
+            descricao=f"Saída Novo Empréstimo (Reneg) - {novo_contrato.codigo_contrato}",
+            emprestimo=novo_contrato
         )
 
     messages.success(request, f"Renegociação concluída! Novo contrato: {codigo_novo}")
