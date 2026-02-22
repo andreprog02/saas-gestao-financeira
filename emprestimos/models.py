@@ -231,3 +231,36 @@ class ContratoLog(models.Model):
 
     def __str__(self):
         return f"{self.contrato.codigo_contrato} - {self.acao} em {self.criado_em.strftime('%d/%m/%Y')}"
+    
+
+
+class PropostaEmprestimo(models.Model):
+    STATUS_CHOICES = [
+        ('PENDENTE', 'Aguardando Análise'),
+        ('APROVADO', 'Aprovado'),
+        ('NEGADO', 'Negado'),
+        ('CANCELADO', 'Cancelado'),
+    ]
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="propostas")
+    valor_solicitado = models.DecimalField(max_digits=12, decimal_places=2)
+    qtd_parcelas = models.IntegerField()
+    taxa_juros = models.DecimalField(max_digits=6, decimal_places=2)
+    primeiro_vencimento = models.DateField()
+    
+    # Dados da Análise
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDENTE')
+    data_solicitacao = models.DateTimeField(auto_now_add=True)
+    data_analise = models.DateTimeField(null=True, blank=True)
+    
+    usuario_solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='propostas_criadas', on_delete=models.SET_NULL, null=True)
+    usuario_aprovador = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='propostas_analisadas', on_delete=models.SET_NULL, null=True)
+    
+    observacoes = models.TextField(blank=True, help_text="Observações do vendedor")
+    parecer_analise = models.TextField(blank=True, help_text="Justificativa da aprovação/reprovação")
+
+    # Link caso vire empréstimo
+    emprestimo_gerado = models.ForeignKey(Emprestimo, on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        return f"Prop. {self.id} - {self.cliente.nome_completo}"

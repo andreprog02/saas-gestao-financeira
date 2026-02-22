@@ -61,9 +61,17 @@ def renegociar(request, emprestimo_id):
         messages.error(request, "Taxa inválida.")
         return redirect("emprestimos:contrato_detalhe", pk=contrato.id)
 
-    # --- PASSO 1: CALCULAR DÍVIDA TOTAL (SALDO DEVEDOR) ---
+    # --- PASSO 1: CALCULAR DÍVIDA TOTAL (SALDO DEVEDOR COM JUROS) ---
     parcelas_abertas = contrato.parcelas.filter(status=ParcelaStatus.ABERTA).order_by('vencimento')
-    total_divida_antiga = parcelas_abertas.aggregate(total=Sum("valor")) .get("total") or Decimal("0.00")
+    
+    # === CORREÇÃO AQUI ===
+    # Antes: total_divida_antiga = parcelas_abertas.aggregate(total=Sum("valor")).get("total")
+    # Agora: Soma o valor_atual (que inclui juros/multa calculados na hora)
+    total_divida_antiga = sum(p.valor_atual for p in parcelas_abertas)
+    
+    if not total_divida_antiga:
+        total_divida_antiga = Decimal("0.00")
+    # =====================
 
     # Calcula o valor do NOVO empréstimo
     valor_novo_emprestimo = (total_divida_antiga - entrada).quantize(Decimal("0.01"))
@@ -80,33 +88,37 @@ def renegociar(request, emprestimo_id):
     # 2.1. Debitar da Conta Corrente (Cliente pagando a dívida antiga)
     # Loop para discriminar parcela por parcela no extrato do cliente
     for p in parcelas_abertas:
+        # Pega o valor atualizado (com juros) para registrar corretamente
+        valor_com_juros = p.valor_atual 
+        
         p.status = ParcelaStatus.LIQUIDADA_RENEGOCIACAO
         p.data_pagamento = timezone.now()
-        p.valor_pago = p.valor
+        p.valor_pago = valor_com_juros # Salva que pagou o valor cheio (com multa)
         p.save()
 
         MovimentacaoConta.objects.create(
             conta=conta_cliente,
             tipo='DEBITO',
             origem='RENEGOCIACAO',
-            valor=p.valor,
+            valor=valor_com_juros, # Debita o valor com juros
             descricao=f"Liq. Renegociação - Parc. {p.numero}/{contrato.qtd_parcelas} - Ctr {contrato.codigo_contrato}",
             data=timezone.now(),
-            parcela=p
+            parcela=p # Vincula a movimentação à parcela
         )
 
     # 2.2. Registrar ENTRADA no Fluxo de Caixa (Empresa recebendo a dívida antiga)
-    # Aqui entra o valor TOTAL da dívida (ex: 30k), pois contabilmente ela foi paga.
-    # O try/except é apenas uma segurança caso o campo 'usuario' não exista no model Transacao
+    # O valor total aqui já inclui os juros somados acima
     try:
         Transacao.objects.create(
             tipo='PAGAMENTO_ENTRADA',
             valor=total_divida_antiga,
             descricao=f"Liq. Total p/ Renegociação - {contrato.codigo_contrato}",
             emprestimo=contrato,
-            usuario=request.user
+            usuario=request.user if request.user.is_authenticated else None
         )
-    except TypeError:
+    except Exception as e:
+        # Fallback caso dê erro genérico, mas idealmente não deve acontecer
+        print(f"Erro ao criar transação de renegociação: {e}")
         Transacao.objects.create(
             tipo='PAGAMENTO_ENTRADA',
             valor=total_divida_antiga,
@@ -141,7 +153,7 @@ def renegociar(request, emprestimo_id):
         total_juros=(total_contrato_novo - valor_novo_emprestimo).quantize(Decimal("0.01")),
         ajuste_arredondamento=ajuste,
         status=EmprestimoStatus.ATIVO,
-        observacoes=f"Renegociação do contrato {contrato.codigo_contrato}. Dívida Orig: {total_divida_antiga} | Entrada: {entrada}"
+        observacoes=f"Renegociação do contrato {contrato.codigo_contrato}. Dívida Orig (c/ juros): {total_divida_antiga} | Entrada: {entrada}"
     )
 
     Parcela.objects.bulk_create([
@@ -169,19 +181,18 @@ def renegociar(request, emprestimo_id):
     )
 
     # 4.2. Registrar SAÍDA (DÉBITO) no Fluxo de Caixa (Empresa emprestando novamente)
-    # Isso é o "Débito no fluxo de caixa" que estava faltando.
     try:
         Transacao.objects.create(
             tipo='EMPRESTIMO_SAIDA',
-            valor=valor_novo_emprestimo, # O model Transacao converte para negativo automaticamente no save()
+            valor=valor_novo_emprestimo, 
             descricao=f"Saída Novo Empréstimo (Reneg) - {novo_contrato.codigo_contrato}",
             emprestimo=novo_contrato,
-            usuario=request.user
+            usuario=request.user if request.user.is_authenticated else None
         )
-    except TypeError:
-        Transacao.objects.create(
+    except Exception:
+         Transacao.objects.create(
             tipo='EMPRESTIMO_SAIDA',
-            valor=valor_novo_emprestimo,
+            valor=valor_novo_emprestimo, 
             descricao=f"Saída Novo Empréstimo (Reneg) - {novo_contrato.codigo_contrato}",
             emprestimo=novo_contrato
         )

@@ -24,14 +24,17 @@
       $(document).ready(function() {
           // Garante que todos os selects usem o tema bonito do Bootstrap
           $.fn.select2.defaults.set( "theme", "bootstrap-5" );
+          
+          // Inicializa qualquer select2 na tela automaticamente
+          $('.select2').select2();
       });
   </script>
 </head>
 <body class="bg-light">
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow">
   <div class="container-fluid">
-    <a class="navbar-brand" href="/">
+    <a class="navbar-brand fw-bold" href="/">
         <i class="bi bi-bank2"></i> Gestão de Crédito
     </a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -39,12 +42,34 @@
     </button>
     
     <div class="collapse navbar-collapse" id="navbarNav">
-      <div class="navbar-nav me-auto">
-        <a class="nav-link" href="/financeiro/"><i class="bi bi-speedometer2"></i> Fluxo de Caixa</a>
-        <a class="nav-link" href="/emprestimos/novo/">Novo Empréstimo</a>
-        <a class="nav-link" href="/clientes/">Clientes</a>
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+            <a class="nav-link" href="/financeiro/"><i class="bi bi-speedometer2"></i> Fluxo de Caixa</a>
+        </li>
+
+        <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle text-warning" href="#" role="button" data-bs-toggle="dropdown">
+                <i class="bi bi-graph-up-arrow"></i> Esteira de Crédito
+            </a>
+            <ul class="dropdown-menu">
+                <li>
+                    <a class="dropdown-item" href="{% url 'emprestimos:criar_proposta' %}">
+                        <i class="bi bi-plus-circle"></i> Nova Proposta
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'emprestimos:listar_propostas' %}">
+                        <i class="bi bi-kanban"></i> Painel de Análise
+                    </a>
+                </li>
+            </ul>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="/clientes/">Clientes</a>
+        </li>
         
-        <div class="nav-item dropdown">
+        <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                 Gestão de Contratos
             </a>
@@ -52,16 +77,29 @@
                 <li><a class="dropdown-item" href="/emprestimos/contratos/">Todos os Contratos</a></li>
                 <li><a class="dropdown-item" href="/emprestimos/a-vencer/">A Vencer</a></li>
                 <li><a class="dropdown-item" href="/emprestimos/vencidos/">Vencidos</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item text-muted small" href="/emprestimos/novo/">Criar Direto (Legacy)</a></li>
             </ul>
-        </div>
+        </li>
 
-        <a class="nav-link" href="/recebiveis/">Recebíveis</a>
-        <a class="nav-link text-warning fw-bold" href="{% url 'cobranca:painel_cobranca' %}">
-            <i class="bi bi-exclamation-triangle"></i> Cobrança
-        </a>
-      </div>
+        <li class="nav-item">
+            <a class="nav-link" href="/recebiveis/">Recebíveis</a>
+        </li>
+        
+        <li class="nav-item">
+            <a class="nav-link text-info fw-bold" href="{% url 'cobranca:painel_cobranca' %}">
+                <i class="bi bi-exclamation-triangle"></i> Cobrança
+            </a>
+        </li>
+      </ul>
+      
       <div class="navbar-nav">
-          <a class="nav-link" href="/admin/">Admin</a>
+          <a class="nav-link" href="/admin/"><i class="bi bi-gear-fill"></i> Admin</a>
+          {% if user.is_authenticated %}
+            <span class="navbar-text ms-3 text-white small">
+                Olá, {{ user.username }}
+            </span>
+          {% endif %}
       </div>
     </div>
   </div>
@@ -71,6 +109,9 @@
   {% if messages %}
     {% for m in messages %}
       <div class="alert alert-{{ m.tags }} mb-4 alert-dismissible fade show shadow-sm" role="alert">
+        {% if m.tags == 'success' %}<i class="bi bi-check-circle-fill me-2"></i>{% endif %}
+        {% if m.tags == 'error' %}<i class="bi bi-x-octagon-fill me-2"></i>{% endif %}
+        {% if m.tags == 'warning' %}<i class="bi bi-exclamation-triangle-fill me-2"></i>{% endif %}
         {{ m }}
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
       </div>

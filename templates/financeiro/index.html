@@ -16,7 +16,7 @@
                             <div class="d-flex align-items-center">
                                 <div class="input-group input-group-lg" style="max-width: 300px;">
                                     <span class="input-group-text bg-primary text-white fw-bold">CÓD</span>
-                                    <input type="text" id="inputCodigo" class="form-control fw-bold text-center" placeholder="Ex: 01, 05" maxlength="2" autofocus>
+                                    <input type="text" id="inputCodigo" class="form-control fw-bold text-center" placeholder="Ex: 01, 05, 06" maxlength="2" autofocus>
                                     <button class="btn btn-outline-primary" type="button" id="btnVerificarCodigo">
                                         <i class="bi bi-arrow-right"></i>
                                     </button>
@@ -25,7 +25,7 @@
                                     <span id="descCodigoPreview" class="badge bg-secondary fs-6">Aguardando código...</span>
                                     <br>
                                     <small class="text-muted">
-                                        01: Despesas | 02: Aporte | <strong>05: Saque Cliente</strong>
+                                        01: Despesas | 02: Aporte | <strong>05: Saque | 06: Depósito</strong>
                                     </small>
                                 </div>
                             </div>
@@ -77,6 +77,8 @@
                             <td>
                                 {% if t.tipo == 'SAQUE_CC' %}
                                     <span class="badge bg-danger">Saque C/C</span>
+                                {% elif t.tipo == 'DEPOSITO_CC' %}
+                                    <span class="badge bg-success">Depósito C/C</span>
                                 {% elif t.tipo == 'EMPRESTIMO_SAIDA' %}
                                     <span class="badge bg-warning text-dark">Empréstimo</span>
                                 {% elif t.tipo == 'PAGAMENTO_ENTRADA' %}
@@ -182,6 +184,55 @@
     </div>
 </div>
 
+<div class="modal fade" id="modalDeposito" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="codigo" value="06">
+            
+            <div class="modal-content border-success">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-piggy-bank"></i> CÓD 06 - Depósito em Conta</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-success small border-success text-dark">
+                        <i class="bi bi-info-circle-fill"></i> 
+                        Esta operação adiciona dinheiro ao <strong>Caixa da Empresa</strong> e credita a <strong>Conta do Cliente</strong>.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">1. Selecione o Cliente</label>
+                        <select name="cliente_id" id="selectCliente06" class="form-select select2" style="width: 100%;" required>
+                            <option value="">Buscar cliente...</option>
+                            {% for c in clientes %}
+                            <option value="{{ c.id }}">{{ c.nome_completo }} (CPF: {{ c.cpf }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">2. Descrição (Opcional)</label>
+                        <input type="text" name="descricao" class="form-control" placeholder="Ex: Depósito inicial..." value="Depósito em Espécie">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-success">3. Valor do Depósito (R$)</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text bg-success text-white">R$</span>
+                            <input type="text" name="valor" class="form-control money text-success fw-bold" required placeholder="0,00">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success fw-bold px-4">Confirmar Depósito</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         // 1. Recebe a lista de códigos do Backend (Django)
@@ -191,9 +242,17 @@
         const preview = document.getElementById('descCodigoPreview');
         const btnVerificar = document.getElementById('btnVerificarCodigo');
 
-        // Inicializa Select2 no Modal 05 (com correção para Modal Bootstrap)
+        // Inicializa Select2 no Modal 05 (Saque)
         $('#selectCliente05').select2({
             dropdownParent: $('#modalCliente'),
+            placeholder: "Digite o nome do cliente...",
+            allowClear: true,
+            width: '100%'
+        });
+
+        // Inicializa Select2 no Modal 06 (Depósito)
+        $('#selectCliente06').select2({
+            dropdownParent: $('#modalDeposito'),
             placeholder: "Digite o nome do cliente...",
             allowClear: true,
             width: '100%'
@@ -207,9 +266,8 @@
             if (op) {
                 // Código Encontrado
                 preview.textContent = op.descricao;
+                // Define a cor baseada no tipo (S=Saída=Vermelho, E=Entrada=Verde)
                 preview.className = "badge fs-6 " + (op.tipo === 'S' ? 'bg-danger' : 'bg-success');
-                
-                // Se tiver 2 dígitos, tenta processar (opcional, ou espera Enter)
             } else {
                 // Código Inválido
                 preview.textContent = "Código não encontrado";
@@ -217,7 +275,7 @@
             }
         });
 
-        // Evento: Enter ou Clique no Botão
+        // Evento: Processamento do Código
         function processarCodigo() {
             const val = inputCodigo.value;
             const op = codigosOperacao.find(c => c.codigo === val);
@@ -229,10 +287,16 @@
             }
 
             if (op.codigo === '05') {
-                // Lógica Específica para Cód 05 (Cliente)
+                // CÓD 05: Saque
                 var modalCliente = new bootstrap.Modal(document.getElementById('modalCliente'));
                 modalCliente.show();
-            } else {
+            } 
+            else if (op.codigo === '06') {
+                // CÓD 06: Depósito
+                var modalDeposito = new bootstrap.Modal(document.getElementById('modalDeposito'));
+                modalDeposito.show();
+            }
+            else {
                 // Lógica Genérica (01, 02...)
                 document.getElementById('gen_codigo').value = op.codigo;
                 document.getElementById('gen_titulo').innerText = `Operação ${op.codigo}`;

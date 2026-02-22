@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-5">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-primary text-white">
+                <h6 class="m-0 font-weight-bold">Dados da Proposta</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label>Cliente</label>
+                        <input type="text" class="form-control" value="{{ p.cliente.nome_completo }}" disabled>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="fw-bold">Valor (R$)</label>
+                            <input type="number" step="0.01" name="valor_aprovado" value="{{ p.valor_solicitado|stringformat:'.2f' }}" class="form-control">
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="fw-bold">Taxa (%)</label>
+                            <input type="number" step="0.01" name="taxa_aprovada" value="{{ p.taxa_juros|stringformat:'.2f' }}" class="form-control">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="fw-bold">Parcelas</label>
+                        <input type="number" name="qtd_aprovada" value="{{ p.qtd_parcelas }}" class="form-control">
+                    </div>
+
+                    <div class="mb-3">
+                        <label>Observação do Vendedor</label>
+                        <textarea class="form-control bg-light" rows="2" disabled>{{ p.observacoes }}</textarea>
+                    </div>
+
+                    <hr>
+                    
+                    <div class="mb-3">
+                        <label class="fw-bold text-dark">Parecer da Análise</label>
+                        <textarea name="parecer" class="form-control" rows="3" placeholder="Insira observações sobre a decisão..."></textarea>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-block">
+                        <button type="submit" name="acao" value="APROVAR" class="btn btn-success btn-lg">
+                            <i class="bi bi-check-circle"></i> APROVAR CRÉDITO
+                        </button>
+                        <button type="submit" name="acao" value="NEGAR" class="btn btn-danger btn-lg">
+                            <i class="bi bi-x-circle"></i> NEGAR
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-7">
+        <div class="card shadow mb-4 border-left-{{ dossie.risco.score_cor }}">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Classificação de Risco</div>
+                        <div class="h3 mb-0 font-weight-bold text-gray-800">
+                            {{ dossie.risco.score_texto }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-shield-check fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <div class="card border-left-info shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Pontualidade</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ dossie.pagamentos.percentual_pontualidade }}%</div>
+                        <small>de parcelas pagas em dia</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-4">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Atraso Médio Histórico</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ dossie.pagamentos.media_dias_atraso }} dias</div>
+                        <small>quando ocorre atraso</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Raio-X do Histórico</h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Cliente Desde
+                        <span class="fw-bold">{{ dossie.resumo.cliente_desde|date:"d/m/Y" }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Contratos Ativos
+                        <span class="badge bg-primary rounded-pill">{{ dossie.resumo.ativos }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Contratos Quitados
+                        <span class="badge bg-success rounded-pill">{{ dossie.resumo.quitados }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Total Já Emprestado (Histórico)
+                        <span class="fw-bold">R$ {{ dossie.resumo.total_movimentado|floatformat:2 }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Taxa Média Aplicada
+                        <span class="fw-bold">{{ dossie.resumo.taxa_media_historica|floatformat:2 }}%</span>
+                    </li>
+                    <li class="list-group-item list-group-item-danger d-flex justify-content-between align-items-center">
+                        <strong>EM ATRASO HOJE</strong>
+                        <span class="fw-bold">R$ {{ dossie.risco.atrasado_hoje_valor|floatformat:2 }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

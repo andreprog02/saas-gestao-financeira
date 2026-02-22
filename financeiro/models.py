@@ -24,6 +24,7 @@ class Transacao(models.Model):
         ('APORTE', 'Aporte de Capital'),
         ('RETIRADA', 'Retirada de Lucro'),
         ('SAQUE_CC', 'Saque Conta Corrente (Cód 05)'), # Novo tipo para o Saque 05
+         ('DEPOSITO_CC', 'Depósito Conta Corrente (Cód 06)'), # <--- ADICIONE ESSA LINHA
         ('OUTROS', 'Outros'),
     ]
 
@@ -68,3 +69,5 @@ def calcular_saldo_atual():
     from django.db.models import Sum
     total = Transacao.objects.aggregate(saldo=Sum('valor'))['saldo']
     return total or 0.00
+
+

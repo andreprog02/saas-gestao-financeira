@@ -43,3 +43,14 @@ urlpatterns = [
     #path("contratos/<int:emprestimo_id>/pdf/", views.contrato_pdf, name="contrato_pdf"),
     #path("contratos/<int:emprestimo_id>/reabrir/", views.reabrir_contrato, name="reabrir_contrato"),
 ]
+
+app_name = 'emprestimos'
+
+urlpatterns = [
+    # ... suas urls existentes (contratos, detalhe, etc) ...
+
+    # --- NOVAS URLS DA ESTEIRA DE CRÉDITO ---
+    path('propostas/', views.listar_propostas, name='listar_propostas'),
+    path('propostas/nova/', views.criar_proposta, name='criar_proposta'),
+    path('propostas/<int:proposta_id>/analise/', views.analisar_proposta, name='analisar_proposta'),
+]
