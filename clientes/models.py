@@ -1,7 +1,7 @@
-# Create your models here.
+from decimal import Decimal
 
 from django.db import models
-from django.core.validators import RegexValidator
+from django.core.validators import RegexValidator, MinValueValidator, MaxValueValidator
 from django.utils import timezone
 
 
@@ -52,6 +52,27 @@ class Cliente(models.Model):
     cidade = models.CharField("Cidade", max_length=80, blank=True, default="")
     uf = models.CharField("UF", max_length=2, blank=True, default="")
 
+    # === NOVOS CAMPOS PARA COMISSÃO ===
+    parceiro_padrao = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="indicados",
+        verbose_name="Parceiro/Comissionado Padrão",
+        help_text="Quem receberá comissão pelos contratos deste cliente automaticamente."
+    )
+    
+    percentual_comissao_padrao = models.DecimalField(
+        " % Comissão Padrão",
+        max_digits=5, 
+        decimal_places=2, 
+        default=Decimal("10.00"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("100.00"))],
+        help_text="Percentual padrão de comissão para este cliente."
+    )
+    # ==================================
+
     criado_em = models.DateTimeField(default=timezone.now, editable=False)
     atualizado_em = models.DateTimeField(auto_now=True)
 
@@ -64,6 +85,7 @@ class Cliente(models.Model):
 
     def __str__(self):
         return f"{self.nome_completo} ({self.cpf})"
+
 
 class ContaCorrente(models.Model):
     TIPO_CHOICES = (

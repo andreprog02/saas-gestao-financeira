@@ -35,7 +35,7 @@ class Emprestimo(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="emprestimos")
     codigo_contrato = models.CharField(max_length=20, unique=True, db_index=True)
 
-    # === NOVO CAMPO: PARCEIRO ===
+    # === CAMPOS DE PARCEIRO E COMISSÃO ===
     parceiro = models.ForeignKey(
         Cliente,
         on_delete=models.SET_NULL, # Se excluir o parceiro, o empréstimo continua existindo
@@ -44,7 +44,15 @@ class Emprestimo(models.Model):
         related_name="emprestimos_parceiro", # Nome para diferenciar do cliente devedor
         verbose_name="Parceiro / Recebedor"
     )
-    # ============================
+    
+    percentual_comissao = models.DecimalField(
+        " % Comissão",
+        max_digits=5, 
+        decimal_places=2, 
+        default=Decimal("10.00"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("100.00"))]
+    )
+    # =====================================
 
     valor_emprestado = models.DecimalField(
         max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))]
@@ -186,11 +194,9 @@ class Parcela(models.Model):
             'total': total.quantize(Decimal("0.01"))
         }
 
-    # === A CORREÇÃO ESTÁ AQUI ===
     @property
     def valor_atual(self):
         return self.dados_atualizados['total']
-    # ============================
 
     @transaction.atomic
     def marcar_como_paga(self, valor_pago=None, data_pagamento=None):
@@ -204,8 +210,6 @@ class Parcela(models.Model):
         emp.save(update_fields=["status", "atualizado_em"])
 
 
-# === ESTA É A CLASSE QUE ESTAVA FALTANDO ===
-# === CORREÇÃO DA CLASSE CONTRATOLOG ===
 class ContratoLog(models.Model):
     class Acao(models.TextChoices):
         CRIADO = "CRIADO", "Criado"
@@ -224,7 +228,6 @@ class ContratoLog(models.Model):
         blank=True
     )
     
-    # Alterado de 'data' para 'criado_em' para evitar conflitos antigos
     criado_em = models.DateTimeField(auto_now_add=True)
     motivo = models.CharField(max_length=255, null=True, blank=True)
     observacao = models.TextField(null=True, blank=True)
@@ -248,6 +251,25 @@ class PropostaEmprestimo(models.Model):
     taxa_juros = models.DecimalField(max_digits=6, decimal_places=2)
     primeiro_vencimento = models.DateField()
     
+    # === NOVOS CAMPOS NA PROPOSTA ===
+    parceiro = models.ForeignKey(
+        Cliente,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="propostas_parceiro",
+        verbose_name="Parceiro Indicador"
+    )
+    
+    percentual_comissao = models.DecimalField(
+        " % Comissão",
+        max_digits=5, 
+        decimal_places=2, 
+        default=Decimal("10.00"),
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("100.00"))]
+    )
+    # ================================
+
     # Dados da Análise
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDENTE')
     data_solicitacao = models.DateTimeField(auto_now_add=True)
@@ -261,6 +283,18 @@ class PropostaEmprestimo(models.Model):
 
     # Link caso vire empréstimo
     emprestimo_gerado = models.ForeignKey(Emprestimo, on_delete=models.SET_NULL, null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        # Automacao: Se for criação (sem ID) e o cliente tiver parceiro padrão, puxa os dados
+        if not self.pk and self.cliente:
+            # Só preenche se o campo parceiro ainda estiver vazio na proposta
+            if not self.parceiro and hasattr(self.cliente, 'parceiro_padrao') and self.cliente.parceiro_padrao:
+                self.parceiro = self.cliente.parceiro_padrao
+                # Puxa o percentual do cliente, se houver, senão mantém o default do model (10.00)
+                if hasattr(self.cliente, 'percentual_comissao_padrao') and self.cliente.percentual_comissao_padrao is not None:
+                    self.percentual_comissao = self.cliente.percentual_comissao_padrao
+                    
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Prop. {self.id} - {self.cliente.nome_completo}"

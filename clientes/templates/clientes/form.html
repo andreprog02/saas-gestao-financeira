@@ -7,11 +7,14 @@
 <form method="post" class="card p-4">
   {% csrf_token %}
 
+  {# === DADOS PESSOAIS === #}
   <div class="row g-3">
-
     <div class="col-md-6">
       <label class="form-label">Nome completo</label>
       {{ form.nome_completo }}
+      {% if form.nome_completo.errors %}
+        <div class="text-danger small">{{ form.nome_completo.errors }}</div>
+      {% endif %}
     </div>
 
     <div class="col-md-3">
@@ -69,6 +72,28 @@
       <label class="form-label">UF</label>
       {{ form.uf }}
     </div>
+
+    {# === SEÇÃO NOVA: COMISSIONAMENTO === #}
+    <div class="col-12 mt-4">
+      <h5 class="text-primary border-bottom pb-2">
+        <i class="bi bi-cash-coin me-2"></i>Configuração de Comissionamento
+      </h5>
+    </div>
+
+    <div class="col-md-8">
+      <label class="form-label">Parceiro / Comissionado Padrão</label>
+      {{ form.parceiro_padrao }}
+      <div class="form-text">Quem receberá comissão automaticamente pelos contratos deste cliente.</div>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">% Comissão Padrão</label>
+      <div class="input-group">
+        {{ form.percentual_comissao_padrao }}
+        <span class="input-group-text">%</span>
+      </div>
+    </div>
+    {# =================================== #}
 
   </div>
 

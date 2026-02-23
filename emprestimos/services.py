@@ -6,6 +6,13 @@ from typing import List, Tuple
 from datetime import date
 
 from dateutil.relativedelta import relativedelta
+from django.db import transaction
+from django.utils import timezone
+
+from .models import (
+    Emprestimo, Parcela, PropostaEmprestimo, 
+    EmprestimoStatus, ParcelaStatus, ContratoLog
+)
 
 
 @dataclass(frozen=True)
@@ -75,3 +82,78 @@ def simular(
         parcelas.append(ParcelaGerada(numero=k, vencimento=venc, valor=parcela_aplicada))
 
     return parcela_bruta, parcela_aplicada, total_aplicado, ajuste, parcelas
+
+
+# === FUNÇÃO DE APROVAÇÃO ADICIONADA ===
+@transaction.atomic
+def aprovar_proposta(proposta: PropostaEmprestimo, usuario):
+    """
+    Transforma uma Proposta Aprovada em um Contrato de Empréstimo (Ativo).
+    Gera as parcelas e vincula o parceiro/comissão.
+    """
+    if proposta.emprestimo_gerado:
+        raise ValueError("Esta proposta já gerou um empréstimo.")
+
+    # 1. Cria o cabeçalho do contrato
+    sequencial = Emprestimo.objects.count() + 1
+    codigo = f"EMP{timezone.now().year}{sequencial:05d}"
+
+    # Reutiliza a função de simulação existente para garantir cálculo igual
+    # Nota: simular retorna (bruta, aplicada, total, ajuste, parcelas_lista)
+    _, valor_parcela, total_contrato, _, parcelas_simuladas = simular(
+        proposta.valor_solicitado,
+        proposta.qtd_parcelas,
+        proposta.taxa_juros,
+        proposta.primeiro_vencimento
+    )
+
+    total_juros = total_contrato - proposta.valor_solicitado
+
+    emprestimo = Emprestimo.objects.create(
+        cliente=proposta.cliente,
+        codigo_contrato=codigo,
+        valor_emprestado=proposta.valor_solicitado,
+        qtd_parcelas=proposta.qtd_parcelas,
+        taxa_juros_mensal=proposta.taxa_juros,
+        primeiro_vencimento=proposta.primeiro_vencimento,
+        
+        # === VINCULAÇÃO DO PARCEIRO ===
+        parceiro=proposta.parceiro,
+        percentual_comissao=proposta.percentual_comissao,
+        # ==============================
+        
+        valor_parcela_aplicada=valor_parcela,
+        total_contrato=total_contrato,
+        total_juros=total_juros,
+        status=EmprestimoStatus.ATIVO
+    )
+
+    # 2. Gera as Parcelas no Banco
+    parcelas_objs = []
+    for p_simulada in parcelas_simuladas:
+        parcelas_objs.append(Parcela(
+            emprestimo=emprestimo,
+            numero=p_simulada.numero,
+            vencimento=p_simulada.vencimento,
+            valor=p_simulada.valor,
+            status=ParcelaStatus.ABERTA
+        ))
+    
+    Parcela.objects.bulk_create(parcelas_objs)
+
+    # 3. Atualiza a Proposta
+    proposta.status = 'APROVADO'
+    proposta.emprestimo_gerado = emprestimo
+    proposta.usuario_aprovador = usuario
+    proposta.data_analise = timezone.now()
+    proposta.save()
+
+    # 4. Log de auditoria
+    ContratoLog.objects.create(
+        contrato=emprestimo,
+        acao=ContratoLog.Acao.CRIADO,
+        usuario=usuario,
+        observacao=f"Gerado via Proposta #{proposta.id}"
+    )
+
+    return emprestimo
