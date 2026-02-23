@@ -1,8 +1,22 @@
 {% extends "base.html" %}
+
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h3 class="mb-0">Clientes</h3>
-  <a class="btn btn-primary" href="{% url 'clientes:novo' %}">+ Novo Cliente</a>
+  
+  <div>
+    <a class="btn btn-primary" href="{% url 'clientes:novo' %}">
+      <i class="bi bi-plus-lg"></i> Novo Cliente
+    </a>
+    
+    <a class="btn btn-outline-success ms-2" href="{% url 'clientes:exportar_clientes' %}">
+      <i class="bi bi-download"></i> Exportar CSV
+    </a>
+    
+    <a class="btn btn-outline-dark ms-2" href="{% url 'clientes:importar_clientes' %}">
+      <i class="bi bi-upload"></i> Importar CSV
+    </a>
+  </div>
 </div>
 
 <form method="get" class="row g-2 mb-3">
@@ -45,7 +59,7 @@
 
 {% if page_obj.paginator.num_pages > 1 %}
 <nav>
-  <ul class="pagination">
+  <ul class="pagination justify-content-center">
     {% if page_obj.has_previous %}
       <li class="page-item"><a class="page-link" href="?q={{ q }}&page={{ page_obj.previous_page_number }}">Anterior</a></li>
     {% else %}

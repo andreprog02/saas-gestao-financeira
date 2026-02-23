@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h4>Importar Clientes via CSV</h4>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info">
+                <strong>Instruções:</strong>
+                <ul>
+                    <li>O arquivo deve ser <strong>.csv</strong> separado por <strong>ponto e vírgula (;)</strong>.</li>
+                    <li>A ordem das colunas deve ser a mesma do arquivo de exportação.</li>
+                    <li>Clientes com <strong>CPF já cadastrado</strong> serão ignorados.</li>
+                </ul>
+            </div>
+
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="arquivo_csv" class="form-label">Selecione o arquivo CSV</label>
+                    <input type="file" class="form-control" name="arquivo_csv" required accept=".csv">
+                </div>
+                
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-upload"></i> Carregar Clientes
+                </button>
+                <a href="{% url 'clientes:cliente_list' %}" class="btn btn-secondary">Cancelar</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

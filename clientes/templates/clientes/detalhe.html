@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load humanize %} {# Tenta carregar humanize, mas floatformat funciona sem ele #}
+{% load humanize %}
 
 {% block content %}
 <div class="container mt-4">
@@ -9,7 +9,8 @@
             <a href="{% url 'clientes:editar' cliente.id %}" class="btn btn-warning">
                 <i class="fas fa-edit"></i> Editar
             </a>
-            <a href="{% url 'clientes:lista' %}" class="btn btn-secondary">
+            
+            <a href="{% url 'clientes:cliente_list' %}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Voltar
             </a>
         </div>

@@ -1,42 +1,65 @@
 document.addEventListener('DOMContentLoaded', function() {
     
-    // ==========================================================
-    // MÁSCARA MONETÁRIA (ESTILO CAIXA ELETRÔNICO / ATM)
-    // Digita: 1234 -> Vira: R$ 12,34
-    // ==========================================================
-    const applyMoneyMask = (input) => {
-        let value = input.value.replace(/\D/g, ""); // Remove tudo que não for número
-        
-        if (value === "") {
-            input.value = "";
-            return;
-        }
+    // Função genérica para aplicar máscara
+    function maskInput(input, format) {
+        input.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, ""); // Remove tudo que não é dígito
+            let formattedValue = "";
+            let valueIndex = 0;
 
-        // Converte para centavos (divide por 100)
-        value = (parseInt(value) / 100).toFixed(2);
-        
-        // Separa parte inteira e decimal
-        let parts = value.split('.');
-        
-        // Adiciona separador de milhar (.)
-        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-        
-        // Retorna formatado: R$ 1.000,00
-        input.value = "R$ " + parts.join(",");
-    };
+            for (let i = 0; i < format.length; i++) {
+                if (valueIndex >= value.length) break;
 
-    // Inicializa todos os campos com a classe 'money-mask'
-    const moneyInputs = document.querySelectorAll('.money-mask');
-    moneyInputs.forEach(input => {
-        // Formata valor inicial se houver (ex: vindo do banco ao editar)
-        if (input.value && !input.value.includes('R$')) {
-            // Garante que o valor seja tratado como centavos
-            // Ex: 1500.00 -> 150000 -> R$ 1.500,00
-            let rawValue = parseFloat(input.value).toFixed(2).replace('.', '');
-            input.value = rawValue;
-            applyMoneyMask(input);
-        }
+                if (format[i] === '#') {
+                    formattedValue += value[valueIndex];
+                    valueIndex++;
+                } else {
+                    formattedValue += format[i];
+                }
+            }
+            e.target.value = formattedValue;
+        });
+    }
 
-        input.addEventListener('input', () => applyMoneyMask(input));
-    });
+    // 1. Máscara CPF: 000.000.000-00
+    const cpfInput = document.getElementById('id_cpf');
+    if (cpfInput) {
+        cpfInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, "");
+            if (value.length > 11) value = value.slice(0, 11);
+            
+            value = value.replace(/(\d{3})(\d)/, "$1.$2");
+            value = value.replace(/(\d{3})(\d)/, "$1.$2");
+            value = value.replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+            
+            e.target.value = value;
+        });
+    }
+
+    // 2. Máscara Telefone: (xx) x xxxx-xxxx
+    const phoneInput = document.getElementById('id_telefone');
+    if (phoneInput) {
+        phoneInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, "");
+            if (value.length > 11) value = value.slice(0, 11);
+
+            value = value.replace(/^(\d{2})(\d)/g, "($1) $2");
+            value = value.replace(/(\d)(\d{4})$/, "$1-$2");
+            
+            e.target.value = value;
+        });
+    }
+
+    // 3. Máscara CEP: xxxxx-xxx
+    const cepInput = document.getElementById('id_cep');
+    if (cepInput) {
+        cepInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, "");
+            if (value.length > 8) value = value.slice(0, 8);
+            
+            value = value.replace(/^(\d{5})(\d)/, "$1-$2");
+            
+            e.target.value = value;
+        });
+    }
 });

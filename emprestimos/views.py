@@ -27,13 +27,7 @@ except ImportError:
     simular = None
 
 from .utils import gerar_codigo_contrato
-
-# Tenta importar serviço de análise, cria fallback se não existir
-try:
-    from .services_analise import gerar_dossie_cliente
-except ImportError:
-    def gerar_dossie_cliente(cliente):
-        return {}
+from .services_analise import gerar_dossie_cliente
 
 
 # ==============================================================================
@@ -41,7 +35,7 @@ except ImportError:
 # ==============================================================================
 
 @login_required
-def lista_contratos(request):
+def listar_contratos(request):
     """Lista todos os contratos ordenados por data"""
     contratos = Emprestimo.objects.all().order_by('-criado_em')
     return render(request, "emprestimos/contratos.html", {"contratos": contratos})
@@ -92,13 +86,11 @@ def pagar_parcela(request, pk):
     # Cálculos
     valor_total = parcela.valor_atual
     valor_honorarios = Decimal('0.00')
-    valor_empresa = valor_total
     nome_profissional = parceiro.nome_completo if parceiro else ""
 
     if tem_split:
         valor_honorarios = valor_total * (PORCENTAGEM_COMISSAO / Decimal('100'))
         valor_honorarios = valor_honorarios.quantize(Decimal('0.01'))
-        valor_empresa = valor_total - valor_honorarios
 
     if request.method == "POST":
         senha = request.POST.get("senha")
@@ -116,7 +108,8 @@ def pagar_parcela(request, pk):
                 parcela.valor_pago = valor_total
                 parcela.save()
 
-                # B. Registra Entrada no Fluxo de Caixa
+                # B. Registra Entrada no Fluxo de Caixa (POSITIVO)
+                # O dinheiro entra integralmente na empresa primeiro
                 descricao_cx = f"{contrato.cliente.nome_completo} pagou {valor_total}"
                 if valor_honorarios > 0:
                     descricao_cx += f" (Split: {valor_honorarios} para {nome_profissional})"
@@ -131,20 +124,21 @@ def pagar_parcela(request, pk):
 
                 # C. Split: Repasse ao Parceiro (se houver)
                 if valor_honorarios > 0 and parceiro:
-                    # 1. Saída do Caixa da Empresa (Despesa de Comissão)
+                    # 1. PARTIDA 1: SAÍDA do Caixa da Empresa (NEGATIVO)
                     Transacao.objects.create(
                         tipo='DESPESA',
-                        valor=-valor_honorarios, # Negativo pois é saída
+                        valor=-valor_honorarios, # <--- IMPORTANTE: Negativo para sair do caixa
                         descricao=f"Comissão Parceiro - {nome_profissional} (Ref. Contrato {contrato.codigo_contrato})",
-                        usuario=request.user
+                        usuario=request.user,
+                        emprestimo=contrato
                     )
 
-                    # 2. Crédito na conta virtual do Parceiro
+                    # 2. PARTIDA 2: ENTRADA na Conta do Parceiro (POSITIVO)
                     conta_prof, _ = ContaCorrente.objects.get_or_create(cliente=parceiro)
                     MovimentacaoConta.objects.create(
                         conta=conta_prof,
                         tipo='CREDITO',
-                        origem='DEPOSITO', # Ou outro tipo se tiver COMISSAO
+                        origem='DEPOSITO',
                         valor=valor_honorarios,
                         descricao=f"Comissão {PORCENTAGEM_COMISSAO}% - Ref. Cliente {contrato.cliente.nome_completo}",
                         data=timezone.now()
@@ -208,7 +202,6 @@ def novo_emprestimo_form(request, cliente_id):
 
             # --- AÇÃO: SIMULAR ---
             if 'simular' in request.POST:
-                # Lógica simples de simulação para visualização rápida
                 juros_total = valor * (taxa / 100) * qtd
                 montante_final = valor + juros_total
                 valor_parcela = montante_final / qtd
@@ -261,7 +254,18 @@ def novo_emprestimo_form(request, cliente_id):
                         )
                         data_atual = data_atual + relativedelta(months=1)
 
-                    # 3. Credita na Conta Corrente do Cliente
+                    # === CORREÇÃO CONTÁBIL ===
+                    
+                    # 3. PARTIDA 1: SAÍDA do Caixa da Empresa (NEGATIVO)
+                    Transacao.objects.create(
+                        tipo='EMPRESTIMO_SAIDA',
+                        valor=-valor, # <--- IMPORTANTE: Negativo para debitar do caixa
+                        descricao=f"Saída Empréstimo Direto - {emprestimo.codigo_contrato}",
+                        emprestimo=emprestimo,
+                        usuario=request.user
+                    )
+
+                    # 4. PARTIDA 2: ENTRADA na Conta Corrente do Cliente (POSITIVO)
                     conta_real, _ = ContaCorrente.objects.get_or_create(cliente=cliente)
                     MovimentacaoConta.objects.create(
                         conta=conta_real,
@@ -273,16 +277,7 @@ def novo_emprestimo_form(request, cliente_id):
                         emprestimo=emprestimo
                     )
 
-                    # 4. Debita do Caixa da Empresa
-                    Transacao.objects.create(
-                        tipo='EMPRESTIMO_SAIDA',
-                        valor=valor, # Model converte para negativo
-                        descricao=f"Saída Empréstimo Direto - {emprestimo.codigo_contrato}",
-                        emprestimo=emprestimo,
-                        usuario=request.user
-                    )
-
-                    messages.success(request, f"Contrato {emprestimo.codigo_contrato} criado com sucesso!")
+                    messages.success(request, f"Contrato {emprestimo.codigo_contrato} criado e valor transferido para a conta do cliente!")
                     return redirect("emprestimos:contrato_detalhe", pk=emprestimo.id)
 
     else:
@@ -370,7 +365,6 @@ def vencidos(request):
 @login_required
 def listar_propostas(request):
     """Painel da Esteira de Crédito"""
-    # Ordena: Pendentes primeiro (0), Outros depois (1)
     propostas = PropostaEmprestimo.objects.annotate(
         prioridade=Case(
             When(status='PENDENTE', then=Value(0)),
@@ -386,7 +380,6 @@ def criar_proposta(request):
     """Vendedor insere proposta para análise"""
     if request.method == 'POST':
         try:
-            # Tratamento de valores (PT-BR -> Float)
             valor_str = request.POST.get('valor', '0').replace('R$', '').replace('.', '').replace(',', '.')
             taxa_str = request.POST.get('taxa', '0').replace(',', '.')
             
@@ -418,10 +411,11 @@ def analisar_proposta(request, proposta_id):
         acao = request.POST.get('acao')
         parecer = request.POST.get('parecer')
         
-        # Tenta pegar valores ajustados pelo gerente, senão usa originais
         try:
-            valor_str = request.POST.get('valor_aprovado', '0').replace('.', '').replace(',', '.')
+            # Tratamento de input number/text
+            valor_str = request.POST.get('valor_aprovado', '0').replace(',', '.')
             taxa_str = request.POST.get('taxa_aprovada', '0').replace(',', '.')
+            
             novo_valor = Decimal(valor_str)
             nova_taxa = Decimal(taxa_str)
             novo_qtd = int(request.POST.get('qtd_aprovada'))
@@ -440,7 +434,7 @@ def analisar_proposta(request, proposta_id):
             messages.info(request, "Proposta negada.")
             
         elif acao == 'APROVAR':
-            # 1. Atualiza proposta com dados finais
+            # 1. Atualiza proposta
             proposta.valor_solicitado = novo_valor
             proposta.taxa_juros = nova_taxa
             proposta.qtd_parcelas = novo_qtd
@@ -472,13 +466,10 @@ def analisar_proposta(request, proposta_id):
                 total_contrato=total_ctr
             )
             
-            # 3. Cria Parcelas (CORREÇÃO AQUI: Acessando atributos do objeto)
+            # 3. Cria Parcelas
             lista_parcelas_db = []
             for p_simulada in parcelas_simuladas:
-                # O objeto p_simulada tem atributos .numero, .vencimento, .valor
-                # Se for um dicionário em algum momento, usaria ['chave'], mas o erro diz que é objeto.
                 try:
-                    # Tenta acessar como Objeto (ParcelaGerada)
                     lista_parcelas_db.append(Parcela(
                         emprestimo=emprestimo,
                         numero=p_simulada.numero,
@@ -486,26 +477,26 @@ def analisar_proposta(request, proposta_id):
                         valor=p_simulada.valor
                     ))
                 except AttributeError:
-                    # Fallback caso seja dicionário
                     lista_parcelas_db.append(Parcela(
                         emprestimo=emprestimo,
                         numero=p_simulada['numero'],
                         vencimento=p_simulada['vencimento'],
                         valor=p_simulada['valor']
                     ))
-
             Parcela.objects.bulk_create(lista_parcelas_db)
             
-            # 4. Movimentação Financeira (Saída do Caixa)
+            # === CORREÇÃO CONTÁBIL NA APROVAÇÃO ===
+
+            # 4. PARTIDA 1: SAÍDA do Caixa da Empresa (NEGATIVO)
             Transacao.objects.create(
                 tipo='EMPRESTIMO_SAIDA',
-                valor=novo_valor, 
+                valor=-novo_valor, # <--- IMPORTANTE: Negativo para sair do caixa
                 descricao=f"Aprovado via Esteira - {codigo_novo}",
                 emprestimo=emprestimo,
                 usuario=request.user
             )
 
-            # 5. Crédito na Conta do Cliente
+            # 5. PARTIDA 2: ENTRADA na Conta do Cliente (POSITIVO)
             conta_cli, _ = ContaCorrente.objects.get_or_create(cliente=proposta.cliente)
             MovimentacaoConta.objects.create(
                 conta=conta_cli,
@@ -520,7 +511,7 @@ def analisar_proposta(request, proposta_id):
             proposta.emprestimo_gerado = emprestimo
             proposta.save()
             
-            messages.success(request, f"Aprovado! Contrato {codigo_novo} gerado.")
+            messages.success(request, f"Aprovado! Valor depositado na conta do cliente.")
             
         return redirect('emprestimos:listar_propostas')
 
