@@ -25,6 +25,31 @@ from contas.models import MovimentacaoConta, ContaCorrente
 # 'simular' e 'aprovar_proposta' estão em services.py
 # 'gerar_dossie_cliente' está em services_analise.py
 
+
+import uuid
+from decimal import Decimal
+import re # <--- Importante para a nova função
+from dateutil.relativedelta import relativedelta
+
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib.auth.decorators import login_required
+from django.utils import timezone
+from django.http import JsonResponse
+from django.contrib import messages
+from django.db import transaction
+from django.db.models import Q, Case, When, Value, IntegerField
+
+# === IMPORTS DOS MODELS ===
+from .models import (
+    Emprestimo, Parcela, EmprestimoStatus, ParcelaStatus, 
+    PropostaEmprestimo, ContratoLog
+)
+from .forms import EmprestimoForm, BuscaClienteForm
+from clientes.models import Cliente
+from financeiro.models import Transacao
+from contas.models import MovimentacaoConta, ContaCorrente
+
+# === IMPORTS DE SERVIÇOS ===
 try:
     from .services import simular, aprovar_proposta
 except ImportError:
@@ -36,36 +61,33 @@ except ImportError:
     def gerar_dossie_cliente(cliente): return None
 
 
-# === FUNÇÃO DE CONVERSÃO ROBUSTA ===
+# === FUNÇÃO DE CONVERSÃO BLINDADA (PADRÃO BRASIL) ===
 def to_decimal(val_str):
     """
-    Converte string monetária para Decimal de forma inteligente.
-    Suporta:
-    - '9.000,00' -> 9000.00 (Padrão BR)
-    - '9.000'    -> 9000.00 (Padrão BR sem decimais)
-    - '9000.00'  -> 9000.00 (Padrão US/DB)
-    - '9'        -> 9.00
+    Força a conversão para padrão BRL (Ponto é milhar, Vírgula é decimal).
+    Remove qualquer caractere que não seja número, vírgula ou sinal de menos.
     """
-    if not val_str: return Decimal('0.00')
+    if not val_str: 
+        return Decimal('0.00')
     
-    val_str = str(val_str).replace('R$', '').strip()
+    val_str = str(val_str)
     
-    # Caso 1: Tem vírgula (Formato BR explícito: 1.000,00 ou 1000,00)
-    if ',' in val_str:
-        val_str = val_str.replace('.', '').replace(',', '.')
+    # 1. Remove tudo que NÃO for dígito, vírgula ou sinal de menos (-)
+    # Isso elimina pontos de milhar, símbolos de moeda (R$), espaços, etc.
+    # Ex: "R$ 12.000,00" vira "12000,00"
+    # Ex: "12.000" vira "12000"
+    val_limpo = re.sub(r'[^\d,-]', '', val_str)
     
-    # Caso 2: Tem ponto mas NÃO tem vírgula (Ambiguidade: 9.000 ou 5000.00)
-    elif '.' in val_str:
-        parts = val_str.split('.')
-        # Se a parte decimal tem 3 dígitos (ex: 9.000), assumimos que é milhar BR
-        if len(parts[-1]) == 3:
-            val_str = val_str.replace('.', '')
-        # Se tem 2 dígitos (ex: 5000.00), mantemos como ponto decimal US
+    # 2. Troca a vírgula por ponto para o Python entender
+    # Ex: "12000,00" vira "12000.00"
+    val_final = val_limpo.replace(',', '.')
     
     try:
-        return Decimal(val_str)
+        return Decimal(val_final)
     except:
         return Decimal('0.00')
+
+# === FUNÇÃO DE CONVERSÃO BLINDADA (PADRÃO BRASIL) ===
 
 # ==============================================================================
 # 1. GESTÃO DE CONTRATOS (LISTAGEM E DETALHES)
