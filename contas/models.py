@@ -26,6 +26,7 @@ class MovimentacaoConta(models.Model):
         ('PAGAMENTO_PARCELA', 'Pagamento de Parcela'),
         ('TAXA', 'Cobrança de Taxa'),
         ('ANTECIPACAO', 'Antecipação de Recebíveis'),
+        ('COMISSAO', 'Comissão de Parceiro'),
     ]
 
     conta = models.ForeignKey(ContaCorrente, on_delete=models.CASCADE, related_name='movimentacoes')

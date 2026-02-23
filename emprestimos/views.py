@@ -116,7 +116,7 @@ def pagar_parcela(request, pk):
                 
                 Transacao.objects.create(
                     tipo='PAGAMENTO_ENTRADA',
-                    valor=valor_total,
+                    valor=abs(valor_total), # Força positivo
                     descricao=descricao_cx + f" - Parc. {parcela.numero}/{contrato.qtd_parcelas}",
                     usuario=request.user,
                     emprestimo=contrato
@@ -125,21 +125,34 @@ def pagar_parcela(request, pk):
                 # C. Split: Repasse ao Parceiro (se houver)
                 if valor_honorarios > 0 and parceiro:
                     # 1. PARTIDA 1: SAÍDA do Caixa da Empresa (NEGATIVO)
+                    # Registra que houve uma despesa de comissão
                     Transacao.objects.create(
                         tipo='DESPESA',
-                        valor=-valor_honorarios, # <--- IMPORTANTE: Negativo para sair do caixa
+                        valor=-abs(valor_honorarios), # Força negativo
                         descricao=f"Comissão Parceiro - {nome_profissional} (Ref. Contrato {contrato.codigo_contrato})",
                         usuario=request.user,
                         emprestimo=contrato
                     )
 
-                    # 2. PARTIDA 2: ENTRADA na Conta do Parceiro (POSITIVO)
+                    # === AJUSTE DE COMISSÃO ===
+                    # 2. PARTIDA INTERMEDIÁRIA: Entrada Compensatória (POSITIVO)
+                    # O dinheiro da comissão saiu do "Lucro" mas ficou no "Caixa" (na conta do parceiro)
+                    Transacao.objects.create(
+                        tipo='DEPOSITO_CC',
+                        valor=abs(valor_honorarios), # Força positivo
+                        descricao=f"Depósito C/C Parceiro (Retido) - {nome_profissional}",
+                        usuario=request.user,
+                        emprestimo=contrato
+                    )
+                    # ==========================
+
+                    # 3. PARTIDA 2: ENTRADA na Conta do Parceiro (POSITIVO)
                     conta_prof, _ = ContaCorrente.objects.get_or_create(cliente=parceiro)
                     MovimentacaoConta.objects.create(
                         conta=conta_prof,
                         tipo='CREDITO',
                         origem='DEPOSITO',
-                        valor=valor_honorarios,
+                        valor=abs(valor_honorarios),
                         descricao=f"Comissão {PORCENTAGEM_COMISSAO}% - Ref. Cliente {contrato.cliente.nome_completo}",
                         data=timezone.now()
                     )
@@ -259,11 +272,21 @@ def novo_emprestimo_form(request, cliente_id):
                     # 3. PARTIDA 1: SAÍDA do Caixa da Empresa (NEGATIVO)
                     Transacao.objects.create(
                         tipo='EMPRESTIMO_SAIDA',
-                        valor=-valor, # <--- IMPORTANTE: Negativo para debitar do caixa
+                        valor=-abs(valor), # Força negativo
                         descricao=f"Saída Empréstimo Direto - {emprestimo.codigo_contrato}",
                         emprestimo=emprestimo,
                         usuario=request.user
                     )
+
+                    # === AJUSTE DE CONTRA-PARTIDA ===
+                    Transacao.objects.create(
+                        tipo='DEPOSITO_CC',
+                        valor=abs(valor), # Força positivo
+                        descricao=f"Depósito C/C (Disponível p/ Saque) - {emprestimo.codigo_contrato}",
+                        emprestimo=emprestimo,
+                        usuario=request.user
+                    )
+                    # ================================
 
                     # 4. PARTIDA 2: ENTRADA na Conta Corrente do Cliente (POSITIVO)
                     conta_real, _ = ContaCorrente.objects.get_or_create(cliente=cliente)
@@ -271,7 +294,7 @@ def novo_emprestimo_form(request, cliente_id):
                         conta=conta_real,
                         tipo='CREDITO',
                         origem='EMPRESTIMO',
-                        valor=valor,
+                        valor=abs(valor),
                         descricao=f"Liberação Empréstimo {emprestimo.codigo_contrato}",
                         data=timezone.now(),
                         emprestimo=emprestimo
@@ -416,7 +439,10 @@ def analisar_proposta(request, proposta_id):
             valor_str = request.POST.get('valor_aprovado', '0').replace(',', '.')
             taxa_str = request.POST.get('taxa_aprovada', '0').replace(',', '.')
             
-            novo_valor = Decimal(valor_str)
+            # === CORREÇÃO: Garante que o valor seja positivo aqui ===
+            novo_valor = abs(Decimal(valor_str))
+            # ========================================================
+            
             nova_taxa = Decimal(taxa_str)
             novo_qtd = int(request.POST.get('qtd_aprovada'))
         except:
@@ -490,11 +516,21 @@ def analisar_proposta(request, proposta_id):
             # 4. PARTIDA 1: SAÍDA do Caixa da Empresa (NEGATIVO)
             Transacao.objects.create(
                 tipo='EMPRESTIMO_SAIDA',
-                valor=-novo_valor, # <--- IMPORTANTE: Negativo para sair do caixa
+                valor=-abs(novo_valor), # Força negativo
                 descricao=f"Aprovado via Esteira - {codigo_novo}",
                 emprestimo=emprestimo,
                 usuario=request.user
             )
+
+            # === AJUSTE DE CONTRA-PARTIDA ===
+            Transacao.objects.create(
+                tipo='DEPOSITO_CC',
+                valor=abs(novo_valor), # Força positivo
+                descricao=f"Depósito C/C (Disponível p/ Saque) - {codigo_novo}",
+                emprestimo=emprestimo,
+                usuario=request.user
+            )
+            # ================================
 
             # 5. PARTIDA 2: ENTRADA na Conta do Cliente (POSITIVO)
             conta_cli, _ = ContaCorrente.objects.get_or_create(cliente=proposta.cliente)
@@ -502,7 +538,7 @@ def analisar_proposta(request, proposta_id):
                 conta=conta_cli,
                 tipo='CREDITO',
                 origem='EMPRESTIMO',
-                valor=novo_valor,
+                valor=abs(novo_valor),
                 descricao=f"Liberação Contrato {codigo_novo}",
                 data=timezone.now(),
                 emprestimo=emprestimo
