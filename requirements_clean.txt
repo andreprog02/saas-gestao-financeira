@@ -1,0 +1,41 @@
+# Django Core
+Django==5.1.6
+django-jazzmin==3.0.1
+djangorestframework==3.16.1
+whitenoise==6.11.0
+gunicorn==23.0.0
+
+# Banco de Dados
+psycopg2-binary==2.9.11
+
+# Utilitários
+python-dotenv==1.0.1
+python-dateutil==2.9.0.post0
+num2words==0.5.14
+Pillow==12.1.0
+
+# PDF e Relatórios
+reportlab==4.4.6
+xhtml2pdf==0.2.17
+weasyprint==67.0
+fpdf2==2.8.5
+
+# Excel / CSV
+openpyxl==3.1.5
+XlsxWriter==3.2.2
+
+# Conciliação Bancária (Fase 3)
+# ofxparse==0.21
+
+# Notificações (Fase 4)
+twilio==9.9.1
+
+# Tarefas Assíncronas (Fase 5)
+# celery==5.4.0
+# redis==7.1.0
+
+# Autenticação
+PyJWT==2.10.1
+
+# QR Code (boletos)
+qrcode==8.2

@@ -3,7 +3,7 @@
 # Create your models here.
 from django.db import models
 from django.utils import timezone
-from django.contrib.auth.models import User
+from django.conf import settings
 from clientes.models import Cliente
 from emprestimos.models import Emprestimo
 from recebiveis.models import ContratoRecebivel
@@ -16,7 +16,7 @@ class HistoricoCobranca(models.Model):
     recebivel = models.ForeignKey(ContratoRecebivel, on_delete=models.CASCADE, null=True, blank=True, related_name='historico_cobranca')
     
     data_evento = models.DateTimeField(default=timezone.now)
-    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     descricao = models.TextField(verbose_name="Descrição do Evento")
     
     # Campo auxiliar para facilitar a exibição

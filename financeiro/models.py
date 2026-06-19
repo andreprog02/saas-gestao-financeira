@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from django.conf import settings
 from emprestimos.models import Emprestimo
 
 class CodigoOperacao(models.Model):
@@ -35,7 +36,7 @@ class Transacao(models.Model):
     
     # Relacionamentos
     emprestimo = models.ForeignKey(Emprestimo, on_delete=models.SET_NULL, null=True, blank=True)
-    usuario = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, blank=True)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     
     # Auditoria e Rastreabilidade
     ip_origem = models.GenericIPAddressField(null=True, blank=True)

@@ -10,17 +10,7 @@ class Cliente(models.Model):
 
     data_nascimento = models.DateField(null=True, blank=True)
 
-    telefone = models.CharField(
-        "Telefone",
-        max_length=16,
-        validators=[
-            RegexValidator(
-                regex=r"^\(\d{2}\)\s\d\s\d{4}-\d{4}$",
-                message="Telefone inválido. Use o formato (xx) x xxxx-xxxx.",
-            )
-        ],
-    )
-
+    telefone = models.CharField("Telefone", max_length=20, blank=True, default="")
     cpf = models.CharField(
         "CPF",
         max_length=14,

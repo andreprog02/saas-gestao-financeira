@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+
+      <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0"><i class="bi bi-person-gear me-2"></i>Meu Perfil</h5>
+        </div>
+        <div class="card-body">
+
+          {% if messages %}
+            {% for msg in messages %}
+              <div class="alert alert-{{ msg.tags }} alert-dismissible fade show py-2">
+                {{ msg }}
+                <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+
+          <form method="post">
+            {% csrf_token %}
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Nome</label>
+                <input type="text" class="form-control" name="first_name"
+                       value="{{ user.first_name }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Sobrenome</label>
+                <input type="text" class="form-control" name="last_name"
+                       value="{{ user.last_name }}">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">E-mail</label>
+                <input type="email" class="form-control" name="email"
+                       value="{{ user.email }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Telefone</label>
+                <input type="text" class="form-control" name="telefone"
+                       value="{{ user.telefone }}">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Cargo</label>
+                <input type="text" class="form-control" value="{{ user.get_cargo_display }}" disabled>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Empresa</label>
+                <input type="text" class="form-control" value="{{ user.empresa|default:'Não vinculado' }}" disabled>
+              </div>
+            </div>
+
+            <hr>
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Nova Senha (deixe vazio para não alterar)</label>
+              <input type="password" class="form-control" name="nova_senha"
+                     placeholder="Mínimo 6 caracteres">
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-lg me-1"></i>Salvar Alterações
+            </button>
+            <a href="/" class="btn btn-outline-secondary ms-2">Voltar</a>
+          </form>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

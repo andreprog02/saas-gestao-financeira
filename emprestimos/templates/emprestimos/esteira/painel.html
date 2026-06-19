@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0"><i class="bi bi-kanban me-2"></i>Esteira de Crédito</h1>
+  <a href="{% url 'emprestimos:esteira_nova' %}" class="btn btn-primary shadow-sm">
+    <i class="bi bi-plus-lg me-1"></i> Nova Proposta
+  </a>
+</div>
+
+<!-- KANBAN -->
+<div class="row g-3" style="overflow-x: auto; flex-wrap: nowrap;">
+  {% for col in colunas %}
+  <div class="col" style="min-width: 250px;">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-{{ col.codigo|lower }}-header d-flex justify-content-between align-items-center py-2">
+        <strong>{{ col.nome }}</strong>
+        <span class="badge bg-white text-dark">{{ col.total }}</span>
+      </div>
+      <div class="card-body p-2" style="max-height: 65vh; overflow-y: auto;">
+        {% for p in col.propostas %}
+        <a href="{% url 'emprestimos:esteira_detalhe' p.id %}" class="text-decoration-none">
+          <div class="card mb-2 border-start border-3
+            {% if p.etapa_atual_obj.sla_estourado %}border-danger{% else %}border-primary{% endif %}">
+            <div class="card-body p-2">
+              <div class="d-flex justify-content-between align-items-start">
+                <span class="fw-bold text-dark small">#{{ p.id }}</span>
+                {% if p.etapa_atual_obj.sla_estourado %}
+                  <span class="badge bg-danger" title="SLA estourado">
+                    <i class="bi bi-alarm"></i>
+                  </span>
+                {% endif %}
+              </div>
+              <div class="text-dark small fw-semibold">{{ p.cliente.nome_completo }}</div>
+              <div class="text-success small fw-bold">R$ {{ p.valor_solicitado|floatformat:2 }}</div>
+              <div class="text-muted" style="font-size: 0.7rem;">
+                {{ p.data_solicitacao|date:"d/m/Y" }}
+                · {{ p.qtd_parcelas }}x
+                · {{ p.taxa_juros }}%
+              </div>
+            </div>
+          </div>
+        </a>
+        {% empty %}
+          <p class="text-muted text-center small py-3">Vazio</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- FINALIZADAS -->
+{% if finalizadas %}
+<div class="card shadow-sm mt-4">
+  <div class="card-header py-2">
+    <strong>Finalizadas (últimas 10)</strong>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Cliente</th>
+          <th>Valor</th>
+          <th>Status</th>
+          <th>Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in finalizadas %}
+        <tr>
+          <td>
+            <a href="{% url 'emprestimos:esteira_detalhe' p.id %}">{{ p.id }}</a>
+          </td>
+          <td>{{ p.cliente.nome_completo }}</td>
+          <td>R$ {{ p.valor_solicitado|floatformat:2 }}</td>
+          <td>
+            {% if p.status == 'APROVADO' %}
+              <span class="badge bg-success">Aprovado</span>
+            {% elif p.status == 'NEGADO' %}
+              <span class="badge bg-danger">Negado</span>
+            {% else %}
+              <span class="badge bg-secondary">{{ p.get_status_display }}</span>
+            {% endif %}
+          </td>
+          <td>{{ p.data_analise|date:"d/m/Y H:i"|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<style>
+  .bg-captacao-header { background: #6c757d; color: white; }
+  .bg-documentacao-header { background: #0d6efd; color: white; }
+  .bg-analise_credito-header { background: #6610f2; color: white; }
+  .bg-comite-header { background: #fd7e14; color: white; }
+  .bg-formalizacao-header { background: #20c997; color: white; }
+  .bg-liberacao-header { background: #198754; color: white; }
+</style>
+{% endblock %}

@@ -239,10 +239,17 @@ class ContratoLog(models.Model):
 
 class PropostaEmprestimo(models.Model):
     STATUS_CHOICES = [
-        ('PENDENTE', 'Aguardando Análise'),
+        ('CAPTACAO', 'Captação'),
+        ('DOCUMENTACAO', 'Análise Documental'),
+        ('ANALISE_CREDITO', 'Análise de Crédito'),
+        ('COMITE', 'Comitê'),
+        ('FORMALIZACAO', 'Formalização'),
+        ('LIBERACAO', 'Liberação'),
         ('APROVADO', 'Aprovado'),
         ('NEGADO', 'Negado'),
         ('CANCELADO', 'Cancelado'),
+        # Mantém compatibilidade
+        ('PENDENTE', 'Pendente (Legado)'),
     ]
 
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="propostas")
@@ -271,7 +278,7 @@ class PropostaEmprestimo(models.Model):
     # ================================
 
     # Dados da Análise
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDENTE')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='CAPTACAO')
     data_solicitacao = models.DateTimeField(auto_now_add=True)
     data_analise = models.DateTimeField(null=True, blank=True)
     
@@ -298,3 +305,210 @@ class PropostaEmprestimo(models.Model):
 
     def __str__(self):
         return f"Prop. {self.id} - {self.cliente.nome_completo}"
+
+    @property
+    def etapa_atual_obj(self):
+        """Retorna a etapa ativa mais recente."""
+        return self.etapas.filter(ativa=True).order_by('-criado_em').first()
+
+    @property
+    def etapa_display(self):
+        """Nome amigável da etapa atual."""
+        etapa = self.etapa_atual_obj
+        if etapa:
+            return etapa.get_etapa_display()
+        return self.get_status_display()
+
+
+# ==============================================================================
+# ESTEIRA DE APROVAÇÃO — Workflow Multi-Etapa
+# ==============================================================================
+
+class EtapaProposta(models.Model):
+    """Cada registro representa uma etapa que a proposta percorreu."""
+
+    class Etapa(models.TextChoices):
+        CAPTACAO = "CAPTACAO", "Captação"
+        DOCUMENTACAO = "DOCUMENTACAO", "Análise Documental"
+        ANALISE_CREDITO = "ANALISE_CREDITO", "Análise de Crédito"
+        COMITE = "COMITE", "Comitê"
+        FORMALIZACAO = "FORMALIZACAO", "Formalização"
+        LIBERACAO = "LIBERACAO", "Liberação"
+
+    class Resultado(models.TextChoices):
+        PENDENTE = "PENDENTE", "Pendente"
+        APROVADO = "APROVADO", "Aprovado"
+        DEVOLVIDO = "DEVOLVIDO", "Devolvido"
+        NEGADO = "NEGADO", "Negado"
+
+    # Ordem das etapas (usado para avançar/voltar)
+    ORDEM = {
+        "CAPTACAO": 1,
+        "DOCUMENTACAO": 2,
+        "ANALISE_CREDITO": 3,
+        "COMITE": 4,
+        "FORMALIZACAO": 5,
+        "LIBERACAO": 6,
+    }
+
+    # Cargo mínimo necessário para cada etapa
+    CARGO_MINIMO = {
+        "CAPTACAO": "OPERADOR",
+        "DOCUMENTACAO": "OPERADOR",
+        "ANALISE_CREDITO": "ANALISTA",
+        "COMITE": "GERENTE",
+        "FORMALIZACAO": "OPERADOR",
+        "LIBERACAO": "GERENTE",
+    }
+
+    # SLA em horas para cada etapa
+    SLA_HORAS = {
+        "CAPTACAO": 4,
+        "DOCUMENTACAO": 24,
+        "ANALISE_CREDITO": 48,
+        "COMITE": 72,
+        "FORMALIZACAO": 24,
+        "LIBERACAO": 8,
+    }
+
+    proposta = models.ForeignKey(
+        PropostaEmprestimo,
+        on_delete=models.CASCADE,
+        related_name="etapas"
+    )
+    etapa = models.CharField(max_length=20, choices=Etapa.choices)
+    resultado = models.CharField(
+        max_length=20,
+        choices=Resultado.choices,
+        default=Resultado.PENDENTE
+    )
+    ativa = models.BooleanField(default=True)
+
+    responsavel = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="etapas_responsavel"
+    )
+    parecer = models.TextField("Parecer / Observações", blank=True, default="")
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["criado_em"]
+        verbose_name = "Etapa da Proposta"
+        verbose_name_plural = "Etapas das Propostas"
+
+    def __str__(self):
+        return f"Prop. {self.proposta_id} — {self.get_etapa_display()} ({self.get_resultado_display()})"
+
+    @property
+    def sla_horas(self):
+        return self.SLA_HORAS.get(self.etapa, 24)
+
+    @property
+    def sla_estourado(self):
+        if self.finalizado_em or not self.ativa:
+            return False
+        limite = self.criado_em + timezone.timedelta(hours=self.sla_horas)
+        return timezone.now() > limite
+
+    @property
+    def tempo_restante(self):
+        """Retorna timedelta restante do SLA (negativo = estourado)."""
+        limite = self.criado_em + timezone.timedelta(hours=self.sla_horas)
+        return limite - timezone.now()
+
+    @property
+    def cargo_minimo(self):
+        return self.CARGO_MINIMO.get(self.etapa, "OPERADOR")
+
+    @property
+    def ordem(self):
+        return self.ORDEM.get(self.etapa, 0)
+
+
+class ChecklistItem(models.Model):
+    """Itens que precisam ser verificados em cada etapa."""
+
+    etapa_proposta = models.ForeignKey(
+        EtapaProposta,
+        on_delete=models.CASCADE,
+        related_name="checklist"
+    )
+    descricao = models.CharField("Descrição", max_length=200)
+    obrigatorio = models.BooleanField("Obrigatório?", default=True)
+    concluido = models.BooleanField("Concluído?", default=False)
+    concluido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    concluido_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-obrigatorio", "descricao"]
+        verbose_name = "Item do Checklist"
+        verbose_name_plural = "Itens do Checklist"
+
+    def __str__(self):
+        status = "✓" if self.concluido else "○"
+        return f"{status} {self.descricao}"
+
+
+class PoliticaCredito(models.Model):
+    """Regras de crédito configuráveis pela empresa."""
+
+    nome = models.CharField("Nome da Política", max_length=100, default="Padrão")
+    ativo = models.BooleanField(default=True)
+
+    # Limites de valor
+    valor_minimo = models.DecimalField(
+        "Valor Mínimo", max_digits=12, decimal_places=2, default=Decimal("500.00")
+    )
+    valor_maximo = models.DecimalField(
+        "Valor Máximo", max_digits=12, decimal_places=2, default=Decimal("100000.00")
+    )
+
+    # Limites de prazo
+    prazo_maximo_meses = models.IntegerField("Prazo Máximo (meses)", default=36)
+
+    # Taxas
+    taxa_minima = models.DecimalField(
+        "Taxa Mínima (%)", max_digits=5, decimal_places=2, default=Decimal("1.00")
+    )
+    taxa_maxima = models.DecimalField(
+        "Taxa Máxima (%)", max_digits=5, decimal_places=2, default=Decimal("15.00")
+    )
+
+    # Regras de risco
+    score_minimo_aprovacao = models.CharField(
+        "Score Mínimo",
+        max_length=30,
+        default="Neutro",
+        help_text="Bom Pagador, Neutro, Risco Médio, etc."
+    )
+    max_contratos_ativos = models.IntegerField(
+        "Máx. Contratos Ativos Simultâneos", default=3
+    )
+    permite_inadimplente = models.BooleanField(
+        "Permitir proposta de inadimplente?", default=False
+    )
+
+    # Alçada — valor máximo sem comitê
+    valor_max_sem_comite = models.DecimalField(
+        "Valor Máx. sem Comitê",
+        max_digits=12, decimal_places=2,
+        default=Decimal("10000.00"),
+        help_text="Acima deste valor, a proposta vai automaticamente pro Comitê."
+    )
+
+    class Meta:
+        verbose_name = "Política de Crédito"
+        verbose_name_plural = "Políticas de Crédito"
+
+    def __str__(self):
+        return f"{self.nome} ({'Ativa' if self.ativo else 'Inativa'})"

@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">
+    <i class="bi bi-file-earmark-text me-2"></i>
+    Proposta #{{ proposta.id }} — {{ proposta.cliente.nome_completo }}
+  </h4>
+  <a href="{% url 'emprestimos:painel_esteira' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Painel
+  </a>
+</div>
+
+<!-- BARRA DE PROGRESSO -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex justify-content-between">
+      {% for p in progresso %}
+      <div class="text-center flex-fill">
+        <div class="rounded-circle mx-auto d-flex align-items-center justify-content-center
+          bg-{{ p.status_class }}" style="width: 36px; height: 36px;">
+          {% if p.status_class == 'success' %}
+            <i class="bi bi-check-lg text-white"></i>
+          {% elif p.status_class == 'primary' %}
+            <i class="bi bi-arrow-right text-white"></i>
+          {% elif p.status_class == 'danger' %}
+            <i class="bi bi-x-lg text-white"></i>
+          {% elif p.status_class == 'warning' %}
+            <i class="bi bi-arrow-return-left text-white"></i>
+          {% else %}
+            <i class="bi bi-circle text-white"></i>
+          {% endif %}
+        </div>
+        <small class="d-block mt-1 {% if p.status_class == 'primary' %}fw-bold{% endif %}"
+               style="font-size: 0.7rem;">
+          {{ p.nome }}
+        </small>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if proposta.status == 'APROVADO' or proposta.status == 'NEGADO' %}
+<div class="alert alert-{% if proposta.status == 'APROVADO' %}success{% else %}danger{% endif %} py-2">
+  <i class="bi bi-{% if proposta.status == 'APROVADO' %}check-circle{% else %}x-circle{% endif %} me-1"></i>
+  Esta proposta foi <strong>{{ proposta.get_status_display }}</strong>
+  {% if proposta.data_analise %} em {{ proposta.data_analise|date:"d/m/Y H:i" }}{% endif %}
+  {% if proposta.emprestimo_gerado %}
+    — <a href="{% url 'emprestimos:contrato_detalhe' proposta.emprestimo_gerado.id %}">
+      Ver Contrato {{ proposta.emprestimo_gerado.codigo_contrato }}
+    </a>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="row g-3">
+
+  <!-- COLUNA ESQUERDA: dados + checklist -->
+  <div class="col-lg-7">
+
+    <!-- DADOS DA PROPOSTA -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2"><strong>Dados da Proposta</strong></div>
+      <div class="card-body">
+        <div class="row small">
+          <div class="col-6 mb-2">
+            <span class="text-muted">Cliente:</span><br>
+            <strong>{{ proposta.cliente.nome_completo }}</strong>
+          </div>
+          <div class="col-6 mb-2">
+            <span class="text-muted">CPF:</span><br>
+            <strong>{{ proposta.cliente.cpf }}</strong>
+          </div>
+          <div class="col-4 mb-2">
+            <span class="text-muted">Valor:</span><br>
+            <strong class="text-success">R$ {{ proposta.valor_solicitado|floatformat:2 }}</strong>
+          </div>
+          <div class="col-4 mb-2">
+            <span class="text-muted">Parcelas:</span><br>
+            <strong>{{ proposta.qtd_parcelas }}x</strong>
+          </div>
+          <div class="col-4 mb-2">
+            <span class="text-muted">Taxa:</span><br>
+            <strong>{{ proposta.taxa_juros }}% a.m.</strong>
+          </div>
+          <div class="col-6 mb-2">
+            <span class="text-muted">1º Vencimento:</span><br>
+            <strong>{{ proposta.primeiro_vencimento|date:"d/m/Y" }}</strong>
+          </div>
+          <div class="col-6 mb-2">
+            <span class="text-muted">Solicitante:</span><br>
+            <strong>{{ proposta.usuario_solicitante|default:"-" }}</strong>
+          </div>
+        </div>
+        {% if proposta.observacoes %}
+        <div class="mt-2 small">
+          <span class="text-muted">Observações:</span><br>
+          {{ proposta.observacoes }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- CHECKLIST DA ETAPA ATIVA -->
+    {% if etapa_ativa and checklist %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2 d-flex justify-content-between">
+        <strong><i class="bi bi-list-check me-1"></i>Checklist — {{ etapa_ativa.get_etapa_display }}</strong>
+        {% if etapa_ativa.sla_estourado %}
+          <span class="badge bg-danger"><i class="bi bi-alarm me-1"></i>SLA Estourado</span>
+        {% else %}
+          <span class="badge bg-secondary">SLA: {{ etapa_ativa.sla_horas }}h</span>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          {% for item in checklist %}
+          <tr>
+            <td style="width: 40px;" class="text-center">
+              {% if pode_atuar and not proposta.status == 'APROVADO' and not proposta.status == 'NEGADO' %}
+              <form method="post" action="{% url 'emprestimos:esteira_checklist' item.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm p-0 border-0">
+                  {% if item.concluido %}
+                    <i class="bi bi-check-square-fill text-success fs-5"></i>
+                  {% else %}
+                    <i class="bi bi-square text-muted fs-5"></i>
+                  {% endif %}
+                </button>
+              </form>
+              {% else %}
+                {% if item.concluido %}
+                  <i class="bi bi-check-square-fill text-success fs-5"></i>
+                {% else %}
+                  <i class="bi bi-square text-muted fs-5"></i>
+                {% endif %}
+              {% endif %}
+            </td>
+            <td class="{% if item.concluido %}text-decoration-line-through text-muted{% endif %}">
+              {{ item.descricao }}
+              {% if item.obrigatorio %}<span class="text-danger">*</span>{% endif %}
+            </td>
+            <td class="text-end small text-muted">
+              {% if item.concluido_por %}
+                {{ item.concluido_por.get_full_name|default:item.concluido_por.username }}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- AÇÕES -->
+    {% if etapa_ativa and pode_atuar and proposta.status != 'APROVADO' and proposta.status != 'NEGADO' %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2"><strong>Ações</strong></div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Parecer / Observações</label>
+          <textarea id="parecer-texto" class="form-control form-control-sm" rows="2"
+                    placeholder="Opcional: registre observações..."></textarea>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+          <!-- AVANÇAR -->
+          <form method="post" action="{% url 'emprestimos:esteira_avancar' proposta.id %}" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="parecer" class="parecer-input">
+            <button type="submit" class="btn btn-success"
+                    onclick="this.form.querySelector('.parecer-input').value=document.getElementById('parecer-texto').value">
+              <i class="bi bi-arrow-right-circle me-1"></i>
+              {% if etapa_ativa.etapa == 'LIBERACAO' %}Aprovar e Liberar{% else %}Avançar Etapa{% endif %}
+            </button>
+          </form>
+
+          <!-- DEVOLVER -->
+          <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#modalDevolver">
+            <i class="bi bi-arrow-return-left me-1"></i>Devolver
+          </button>
+
+          <!-- NEGAR -->
+          <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalNegar">
+            <i class="bi bi-x-circle me-1"></i>Negar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Devolver -->
+    <div class="modal fade" id="modalDevolver" tabindex="-1">
+      <div class="modal-dialog">
+        <form method="post" action="{% url 'emprestimos:esteira_devolver' proposta.id %}">
+          {% csrf_token %}
+          <div class="modal-content">
+            <div class="modal-header bg-warning">
+              <h5 class="modal-title">Devolver Proposta</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <label class="form-label fw-semibold">Motivo da devolução</label>
+              <textarea name="motivo" class="form-control" rows="3" required
+                        placeholder="Informe o que precisa ser corrigido..."></textarea>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-warning">Devolver</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal Negar -->
+    <div class="modal fade" id="modalNegar" tabindex="-1">
+      <div class="modal-dialog">
+        <form method="post" action="{% url 'emprestimos:esteira_negar' proposta.id %}">
+          {% csrf_token %}
+          <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+              <h5 class="modal-title">Negar Proposta</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <label class="form-label fw-semibold">Motivo da negativa</label>
+              <textarea name="parecer" class="form-control" rows="3" required
+                        placeholder="Justifique a decisão..."></textarea>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-danger">Confirmar Negativa</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% elif not pode_atuar and etapa_ativa %}
+    <div class="alert alert-warning py-2 small">
+      <i class="bi bi-lock me-1"></i>
+      Você não tem permissão para atuar nesta etapa. 
+      Cargo mínimo: <strong>{{ etapa_ativa.cargo_minimo }}</strong>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- COLUNA DIREITA: dossiê + timeline -->
+  <div class="col-lg-5">
+
+    <!-- DOSSIÊ DO CLIENTE -->
+    {% if dossie %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2">
+        <strong><i class="bi bi-person-vcard me-1"></i>Dossiê do Cliente</strong>
+      </div>
+      <div class="card-body small">
+        <!-- Score -->
+        <div class="text-center mb-3">
+          <span class="badge bg-{{ dossie.risco.score_cor }} fs-6 px-3 py-2">
+            {{ dossie.risco.score_texto }}
+          </span>
+        </div>
+
+        <div class="row">
+          <div class="col-6 mb-2">
+            <span class="text-muted">Contratos:</span><br>
+            <strong>{{ dossie.resumo.qtd_total }}</strong>
+            ({{ dossie.resumo.ativos }} ativos, {{ dossie.resumo.quitados }} quitados)
+          </div>
+          <div class="col-6 mb-2">
+            <span class="text-muted">Total Movimentado:</span><br>
+            <strong>R$ {{ dossie.resumo.total_movimentado|floatformat:2 }}</strong>
+          </div>
+          <div class="col-6 mb-2">
+            <span class="text-muted">Pontualidade:</span><br>
+            <strong>{{ dossie.pagamentos.percentual_pontualidade }}%</strong>
+            ({{ dossie.pagamentos.pagas_em_dia }}/{{ dossie.pagamentos.total_pagas }})
+          </div>
+          <div class="col-6 mb-2">
+            <span class="text-muted">Média Atraso:</span><br>
+            <strong>{{ dossie.pagamentos.media_dias_atraso }} dias</strong>
+          </div>
+        </div>
+
+        {% if dossie.risco.atrasado_hoje_qtd > 0 %}
+        <div class="alert alert-danger py-1 mt-2 small mb-0">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          <strong>{{ dossie.risco.atrasado_hoje_qtd }}</strong> parcela(s) em atraso hoje:
+          R$ {{ dossie.risco.atrasado_hoje_valor|floatformat:2 }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- TIMELINE -->
+    <div class="card shadow-sm">
+      <div class="card-header py-2">
+        <strong><i class="bi bi-clock-history me-1"></i>Histórico</strong>
+      </div>
+      <div class="card-body p-0">
+        <div class="list-group list-group-flush">
+          {% for e in todas_etapas reversed %}
+          <div class="list-group-item py-2">
+            <div class="d-flex justify-content-between">
+              <strong class="small">{{ e.get_etapa_display }}</strong>
+              <span class="badge bg-{% if e.resultado == 'APROVADO' %}success{% elif e.resultado == 'NEGADO' %}danger{% elif e.resultado == 'DEVOLVIDO' %}warning{% else %}primary{% endif %}">
+                {{ e.get_resultado_display }}
+              </span>
+            </div>
+            <div class="text-muted" style="font-size: 0.75rem;">
+              {{ e.criado_em|date:"d/m/Y H:i" }}
+              {% if e.responsavel %} · {{ e.responsavel.get_full_name|default:e.responsavel.username }}{% endif %}
+              {% if e.finalizado_em %} → {{ e.finalizado_em|date:"d/m/Y H:i" }}{% endif %}
+            </div>
+            {% if e.parecer %}
+              <div class="small mt-1 fst-italic text-secondary">{{ e.parecer }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

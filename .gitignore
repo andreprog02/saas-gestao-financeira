@@ -1,28 +1,25 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-dist/
-build/
-
-# Virtualenv
+# Ambiente
+.env
 venv/
-.env/
 .venv/
+__pycache__/
+*.pyc
 
-# Django
-*.log
+# Banco local
 db.sqlite3
-media/
+db.sqlite3-journal
+
+# Estáticos coletados
 staticfiles/
-local_settings.py
+
+# Media (uploads)
+media/
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store

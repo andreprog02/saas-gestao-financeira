@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-10">
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Nova Proposta de Crédito</h5>
+      </div>
+      <div class="card-body">
+
+        {% if politica %}
+        <div class="alert alert-info py-2 small">
+          <i class="bi bi-info-circle me-1"></i>
+          <strong>Política ativa:</strong>
+          Valor entre R$ {{ politica.valor_minimo|floatformat:2 }} e R$ {{ politica.valor_maximo|floatformat:2 }}
+          · Prazo máx: {{ politica.prazo_maximo_meses }} meses
+          · Taxa entre {{ politica.taxa_minima }}% e {{ politica.taxa_maxima }}%
+        </div>
+        {% endif %}
+
+        <form method="post" id="form-proposta">
+          {% csrf_token %}
+
+          <div class="row">
+            <!-- COLUNA ESQUERDA: formulário -->
+            <div class="col-lg-6">
+
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Cliente</label>
+                <select name="cliente_id" class="form-select select2" required>
+                  <option value="">Selecione...</option>
+                  {% for c in clientes %}
+                    <option value="{{ c.id }}">{{ c.nome_completo }} ({{ c.cpf }})</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="row mb-3">
+                <div class="col-6">
+                  <label class="form-label fw-semibold">Valor Solicitado</label>
+                  <input type="text" name="valor" id="sim-valor" class="form-control money-mask"
+                         placeholder="R$ 0,00" required>
+                </div>
+                <div class="col-6">
+                  <label class="form-label fw-semibold">Taxa de Juros (% a.m.)</label>
+                  <input type="number" name="taxa" id="sim-taxa" class="form-control" step="0.01"
+                         value="{% if politica %}{{ politica.taxa_minima }}{% else %}5.00{% endif %}" required>
+                </div>
+              </div>
+
+              <div class="row mb-3">
+                <div class="col-6">
+                  <label class="form-label fw-semibold">Nº Parcelas</label>
+                  <input type="number" name="qtd_parcelas" id="sim-qtd" class="form-control"
+                         value="12" min="1" max="{% if politica %}{{ politica.prazo_maximo_meses }}{% else %}360{% endif %}" required>
+                </div>
+                <div class="col-6">
+                  <label class="form-label fw-semibold">1º Vencimento</label>
+                  <input type="date" name="vencimento" id="sim-vencimento" class="form-control" required>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Observações</label>
+                <textarea name="observacoes" class="form-control" rows="2"
+                          placeholder="Informações adicionais..."></textarea>
+              </div>
+
+              <button type="button" id="btn-simular" class="btn btn-outline-primary w-100 mb-3">
+                <i class="bi bi-calculator me-1"></i>Simular Empréstimo
+              </button>
+
+            </div>
+
+            <!-- COLUNA DIREITA: resultado da simulação -->
+            <div class="col-lg-6">
+              <!-- Placeholder antes da simulação -->
+              <div id="sim-placeholder" class="text-center text-muted py-5">
+                <i class="bi bi-calculator" style="font-size: 3rem;"></i>
+                <p class="mt-2">Preencha os dados e clique em <strong>Simular</strong><br>para ver os valores calculados.</p>
+              </div>
+
+              <!-- Resultado da simulação (escondido inicialmente) -->
+              <div id="sim-resultado" style="display: none;">
+
+                <!-- Resumo -->
+                <div class="card bg-light mb-3">
+                  <div class="card-body py-2">
+                    <h6 class="card-title mb-3"><i class="bi bi-bar-chart me-1"></i>Resumo da Simulação</h6>
+                    <div class="row text-center">
+                      <div class="col-6 mb-2">
+                        <small class="text-muted d-block">Valor da Parcela</small>
+                        <span class="fs-4 fw-bold text-primary" id="res-parcela">—</span>
+                      </div>
+                      <div class="col-6 mb-2">
+                        <small class="text-muted d-block">Total do Contrato</small>
+                        <span class="fs-4 fw-bold text-dark" id="res-total">—</span>
+                      </div>
+                      <div class="col-4">
+                        <small class="text-muted d-block">Juros Total</small>
+                        <span class="fw-semibold text-danger" id="res-juros">—</span>
+                      </div>
+                      <div class="col-4">
+                        <small class="text-muted d-block">Parcela Bruta</small>
+                        <span class="fw-semibold text-secondary" id="res-bruta">—</span>
+                      </div>
+                      <div class="col-4">
+                        <small class="text-muted d-block">Arredondamento</small>
+                        <span class="fw-semibold text-secondary" id="res-ajuste">—</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tabela de parcelas -->
+                <div class="card">
+                  <div class="card-header py-2">
+                    <strong><i class="bi bi-list-ol me-1"></i>Parcelas</strong>
+                  </div>
+                  <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-sm table-striped mb-0">
+                      <thead class="table-light sticky-top">
+                        <tr>
+                          <th class="text-center">#</th>
+                          <th>Vencimento</th>
+                          <th class="text-end">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody id="res-parcelas-tbody">
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Botão de enviar -->
+                <button type="submit" class="btn btn-success w-100 mt-3">
+                  <i class="bi bi-send me-1"></i>Enviar para Esteira de Aprovação
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <a href="{% url 'emprestimos:painel_esteira' %}" class="btn btn-outline-secondary">
+              <i class="bi bi-arrow-left me-1"></i>Voltar
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+$(document).ready(function() {
+
+  function formatarDinheiro(valor) {
+    return parseFloat(valor).toLocaleString('pt-BR', {
+      style: 'currency', currency: 'BRL'
+    });
+  }
+
+  $('#btn-simular').on('click', function() {
+    var valor = $('#sim-valor').val();
+    var taxa = $('#sim-taxa').val();
+    var qtd = $('#sim-qtd').val();
+    var vencimento = $('#sim-vencimento').val();
+
+    if (!valor || !taxa || !qtd) {
+      alert('Preencha valor, taxa e número de parcelas.');
+      return;
+    }
+
+    var btn = $(this);
+    btn.prop('disabled', true).html('<i class="bi bi-hourglass-split me-1"></i>Calculando...');
+
+    $.ajax({
+      url: "{% url 'emprestimos:esteira_simular' %}",
+      data: { valor: valor, taxa: taxa, qtd: qtd, vencimento: vencimento },
+      success: function(data) {
+        // Preenche resumo
+        $('#res-parcela').text(formatarDinheiro(data.parcela_aplicada));
+        $('#res-total').text(formatarDinheiro(data.total_contrato));
+        $('#res-juros').text(formatarDinheiro(data.total_juros));
+        $('#res-bruta').text(formatarDinheiro(data.parcela_bruta));
+        $('#res-ajuste').text(formatarDinheiro(data.ajuste));
+
+        // Preenche tabela de parcelas
+        var tbody = $('#res-parcelas-tbody');
+        tbody.empty();
+        data.parcelas.forEach(function(p) {
+          tbody.append(
+            '<tr>' +
+            '<td class="text-center">' + p.numero + '</td>' +
+            '<td>' + p.vencimento + '</td>' +
+            '<td class="text-end fw-semibold">' + formatarDinheiro(p.valor) + '</td>' +
+            '</tr>'
+          );
+        });
+
+        // Mostra resultado, esconde placeholder
+        $('#sim-placeholder').hide();
+        $('#sim-resultado').show();
+      },
+      error: function(xhr) {
+        var msg = xhr.responseJSON ? xhr.responseJSON.erro : 'Erro ao simular.';
+        alert(msg);
+      },
+      complete: function() {
+        btn.prop('disabled', false).html('<i class="bi bi-calculator me-1"></i>Simular Empréstimo');
+      }
+    });
+  });
+
+});
+</script>
+{% endblock %}
