@@ -76,6 +76,72 @@ class Cliente(models.Model):
     def __str__(self):
         return f"{self.nome_completo} ({self.cpf})"
 
+    @property
+    def documentos_dict(self):
+        """Retorna dict {tipo: documento_mais_recente} para acesso rápido."""
+        docs = {}
+        for doc in self.documentos.order_by("-criado_em"):
+            if doc.tipo not in docs:
+                docs[doc.tipo] = doc
+        return docs
+
+
+class DocumentoCliente(models.Model):
+    """Documentos digitalizados do cliente."""
+
+    TIPO_CHOICES = [
+        ("CNH_FRENTE", "CNH / Identidade (Frente)"),
+        ("CNH_VERSO", "CNH / Identidade (Verso)"),
+        ("ESTADO_CIVIL", "Certidão de Estado Civil"),
+        ("COMP_RENDA", "Comprovante de Renda"),
+        ("COMP_RESIDENCIA", "Comprovante de Residência"),
+        ("CONSULTA_CREDITO", "Consulta Órgãos de Crédito"),
+    ]
+
+    # Tipos que expiram após 3 meses
+    TIPOS_COM_VALIDADE = ["COMP_RENDA", "COMP_RESIDENCIA"]
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="documentos")
+    tipo = models.CharField("Tipo", max_length=20, choices=TIPO_CHOICES)
+    arquivo = models.FileField("Arquivo", upload_to="documentos_clientes/%Y/%m/")
+    descricao = models.CharField("Descrição", max_length=100, blank=True, default="")
+
+    # Mês/Ano de referência (para comprovantes)
+    mes_referencia = models.IntegerField("Mês Referência", null=True, blank=True)
+    ano_referencia = models.IntegerField("Ano Referência", null=True, blank=True)
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+        verbose_name = "Documento do Cliente"
+        verbose_name_plural = "Documentos dos Clientes"
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} — {self.cliente.nome_completo}"
+
+    @property
+    def vencido(self):
+        """Retorna True se o documento está vencido (mais de 3 meses)."""
+        if self.tipo not in self.TIPOS_COM_VALIDADE:
+            return False
+        if not self.mes_referencia or not self.ano_referencia:
+            return True  # Sem referência = considerar vencido
+
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        data_ref = date(self.ano_referencia, self.mes_referencia, 1)
+        limite = date.today() - relativedelta(months=3)
+        return data_ref < limite
+
+    @property
+    def status_texto(self):
+        if self.tipo in self.TIPOS_COM_VALIDADE:
+            if self.vencido:
+                return "Desatualizado"
+            return "Vigente"
+        return "OK"
+
 
 class ContaCorrente(models.Model):
     TIPO_CHOICES = (

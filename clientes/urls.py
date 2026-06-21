@@ -16,4 +16,8 @@ urlpatterns = [
     # --- CORREÇÃO 2: Adicionamos as rotas de Importar/Exportar ---
     path("exportar/", views.exportar_clientes_csv, name="exportar_clientes"),
     path("importar/", views.importar_clientes_csv, name="importar_clientes"),
+
+    # Documentos
+    path("<int:cliente_id>/documento/upload/", views.upload_documento, name="upload_documento"),
+    path("documento/<int:doc_id>/excluir/", views.excluir_documento, name="excluir_documento"),
 ]

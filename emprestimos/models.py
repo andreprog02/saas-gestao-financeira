@@ -512,3 +512,36 @@ class PoliticaCredito(models.Model):
 
     def __str__(self):
         return f"{self.nome} ({'Ativa' if self.ativo else 'Inativa'})"
+
+
+class VotoComite(models.Model):
+    """Registro de voto de cada membro do comitê."""
+
+    DECISAO_CHOICES = [
+        ("DEFERIDO", "Deferido"),
+        ("INDEFERIDO", "Indeferido"),
+    ]
+
+    proposta = models.ForeignKey(
+        PropostaEmprestimo, on_delete=models.CASCADE, related_name="votos_comite"
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="votos_comite"
+    )
+    decisao = models.CharField("Decisão", max_length=15, choices=DECISAO_CHOICES)
+    observacoes = models.TextField(
+        "Observações",
+        blank=True,
+        default="",
+        help_text="Ressalvas aceitas pelo votante (ex: comprovante de renda desatualizado)",
+    )
+    data_voto = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data_voto"]
+        verbose_name = "Voto do Comitê"
+        verbose_name_plural = "Votos do Comitê"
+        unique_together = [("proposta", "usuario")]
+
+    def __str__(self):
+        return f"Voto {self.get_decisao_display()} — {self.usuario} — Prop. {self.proposta_id}"

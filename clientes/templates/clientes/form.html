@@ -104,6 +104,116 @@
   </div>
 </form>
 
+{# === DOCUMENTOS (só aparece ao editar) === #}
+{% if cliente %}
+<div class="card mt-4 shadow-sm">
+  <div class="card-header bg-dark text-white py-2">
+    <h5 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Documentos do Cliente</h5>
+  </div>
+  <div class="card-body">
+
+    {# Upload #}
+    <form method="post" action="{% url 'clientes:upload_documento' cliente.id %}" enctype="multipart/form-data" class="mb-4">
+      {% csrf_token %}
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Tipo</label>
+          <select name="tipo" class="form-select form-select-sm" required id="doc-tipo-select">
+            <option value="">Selecione...</option>
+            {% for val, label in tipos_doc %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Arquivo</label>
+          <input type="file" name="arquivo" class="form-control form-control-sm" required
+                 accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+        </div>
+        <div class="col-md-2" id="doc-ref-fields" style="display:none;">
+          <label class="form-label small fw-semibold">Mês/Ano Ref.</label>
+          <div class="d-flex gap-1">
+            <select name="mes_referencia" class="form-select form-select-sm">
+              <option value="">Mês</option>
+              <option value="1">Jan</option><option value="2">Fev</option>
+              <option value="3">Mar</option><option value="4">Abr</option>
+              <option value="5">Mai</option><option value="6">Jun</option>
+              <option value="7">Jul</option><option value="8">Ago</option>
+              <option value="9">Set</option><option value="10">Out</option>
+              <option value="11">Nov</option><option value="12">Dez</option>
+            </select>
+            <input type="number" name="ano_referencia" class="form-control form-control-sm"
+                   placeholder="Ano" min="2020" max="2030" value="2026" style="width:80px;">
+          </div>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Descrição (opcional)</label>
+          <input type="text" name="descricao" class="form-control form-control-sm" placeholder="Ex: IRPF 2025">
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-sm btn-primary w-100">
+            <i class="bi bi-upload me-1"></i>Enviar
+          </button>
+        </div>
+      </div>
+    </form>
+
+    {# Lista de documentos #}
+    {% if documentos %}
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Tipo</th>
+          <th>Arquivo</th>
+          <th>Referência</th>
+          <th>Status</th>
+          <th>Enviado em</th>
+          <th class="text-end">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in documentos %}
+        <tr>
+          <td class="small fw-semibold">{{ d.get_tipo_display }}</td>
+          <td class="small">
+            <a href="{{ d.arquivo.url }}" target="_blank">
+              <i class="bi bi-file-earmark me-1"></i>{{ d.arquivo.name|truncatechars:30 }}
+            </a>
+          </td>
+          <td class="small">
+            {% if d.mes_referencia and d.ano_referencia %}
+              {{ d.mes_referencia }}/{{ d.ano_referencia }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if d.status_texto == 'Desatualizado' %}
+              <span class="badge bg-danger">Desatualizado</span>
+            {% elif d.status_texto == 'Vigente' %}
+              <span class="badge bg-success">Vigente</span>
+            {% else %}
+              <span class="badge bg-secondary">OK</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ d.criado_em|date:"d/m/Y" }}</td>
+          <td class="text-end">
+            <a href="{% url 'clientes:excluir_documento' d.id %}" class="btn btn-sm btn-outline-danger py-0"
+               onclick="return confirm('Excluir este documento?')">
+              <i class="bi bi-trash"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted text-center small mb-0">Nenhum documento enviado.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {# =========================
    SCRIPTS
    ========================= #}
@@ -112,6 +222,17 @@
 <script src="{% static 'js/cep_fill.js' %}"></script>
 
 <script>
+/* Mostra mês/ano referência para comprovantes */
+(function(){
+  var sel = document.getElementById('doc-tipo-select');
+  var ref = document.getElementById('doc-ref-fields');
+  if(sel && ref){
+    sel.addEventListener('change', function(){
+      var show = (sel.value === 'COMP_RENDA' || sel.value === 'COMP_RESIDENCIA');
+      ref.style.display = show ? 'block' : 'none';
+    });
+  }
+})();
 /* ===============================
    DATA NASCIMENTO dd/mm/aaaa
    =============================== */

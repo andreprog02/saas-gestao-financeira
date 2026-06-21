@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-envelope-paper me-2"></i>Emissão de Carta de Cobrança</h4>
+  <a href="{% url 'cobranca:carta_consultar' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-search me-1"></i>Consultar Cartas Emitidas
+  </a>
+</div>
+
+{% if devedores %}
+<div class="card shadow-sm">
+  <div class="card-header py-2">
+    <strong>Clientes com parcelas em atraso</strong>
+    <span class="badge bg-danger ms-2">{{ devedores|length }}</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Cliente</th>
+          <th>Contrato</th>
+          <th class="text-center">Parcelas Atraso</th>
+          <th class="text-end">Valor Total</th>
+          <th class="text-center">Dias Atraso</th>
+          <th class="text-end">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in devedores %}
+        <tr>
+          <td class="fw-semibold">{{ d.cliente.nome_completo }}</td>
+          <td><span class="badge bg-secondary">{{ d.emprestimo.codigo_contrato }}</span></td>
+          <td class="text-center">
+            <span class="badge bg-danger">{{ d.qtd_parcelas }}</span>
+          </td>
+          <td class="text-end fw-bold text-danger">R$ {{ d.valor_total|floatformat:2 }}</td>
+          <td class="text-center">
+            <span class="badge {% if d.dias_atraso > 30 %}bg-dark{% elif d.dias_atraso > 15 %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+              {{ d.dias_atraso }} dias
+            </span>
+          </td>
+          <td class="text-end">
+            <a href="{% url 'cobranca:carta_emitir' d.emprestimo.id %}"
+               class="btn btn-sm btn-danger"
+               onclick="return confirm('Emitir carta de cobrança para {{ d.cliente.nome_completo }}?')">
+              <i class="bi bi-envelope-paper me-1"></i>Emitir Carta
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card shadow-sm">
+  <div class="card-body text-center text-muted py-5">
+    <i class="bi bi-check-circle" style="font-size: 3rem; color: #198754;"></i>
+    <p class="mt-2 fs-5">Nenhum cliente com parcelas em atraso.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

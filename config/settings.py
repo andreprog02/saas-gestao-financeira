@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "emprestimos",
     "contas",
     "cobranca",
+    "conciliacao",
 ]
 
 # === USUÁRIO CUSTOMIZADO ===
@@ -130,6 +131,9 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # WhiteNoise para servir estáticos em produção
 STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },

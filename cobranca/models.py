@@ -59,3 +59,46 @@ class CarteiraCobranca(models.Model):
     class Meta:
         verbose_name = "Regra de Split/Honorários"
         verbose_name_plural = "Regras de Split/Honorários"
+
+
+class CartaCobranca(models.Model):
+    """Carta de cobrança emitida para cliente inadimplente."""
+
+    numero = models.IntegerField("Número Sequencial")
+    ano = models.IntegerField("Ano de Emissão")
+    numero_formatado = models.CharField("Nº Correspondência", max_length=10, unique=True)
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="cartas_cobranca")
+    emprestimo = models.ForeignKey(Emprestimo, on_delete=models.CASCADE, related_name="cartas_cobranca")
+
+    qtd_parcelas_atraso = models.IntegerField("Parcelas em Atraso")
+    valor_total_atraso = models.DecimalField("Valor Total em Atraso", max_digits=12, decimal_places=2)
+
+    local_emissao = models.CharField("Local", max_length=100, default="Rio de Janeiro")
+    data_emissao = models.DateField("Data de Emissão", default=timezone.now)
+
+    emitido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ano", "-numero"]
+        verbose_name = "Carta de Cobrança"
+        verbose_name_plural = "Cartas de Cobrança"
+
+    def __str__(self):
+        return f"Carta {self.numero_formatado} — {self.cliente.nome_completo}"
+
+    @classmethod
+    def proximo_numero(cls, ano=None):
+        """Retorna o próximo número sequencial para o ano."""
+        if ano is None:
+            ano = timezone.localdate().year
+        ultimo = cls.objects.filter(ano=ano).order_by("-numero").first()
+        return (ultimo.numero + 1) if ultimo else 1
+
+    @classmethod
+    def gerar_numero_formatado(cls, numero, ano):
+        """Formata: 001/2026"""
+        return f"{numero:03d}/{ano}"

@@ -275,6 +275,39 @@ def detalhe_proposta(request, proposta_id):
             "status_class": status_class,
         })
 
+    # Documentos do cliente
+    from clientes.models import DocumentoCliente
+    documentos = proposta.cliente.documentos.all()
+    docs_dict = proposta.cliente.documentos_dict
+    todos_tipos = DocumentoCliente.TIPO_CHOICES
+
+    # Monta lista de documentos com status
+    docs_status = []
+    for tipo_cod, tipo_nome in todos_tipos:
+        doc = docs_dict.get(tipo_cod)
+        docs_status.append({
+            "tipo": tipo_cod,
+            "nome": tipo_nome,
+            "doc": doc,
+            "presente": doc is not None,
+            "vencido": doc.vencido if doc else False,
+            "status": doc.status_texto if doc else "Ausente",
+        })
+
+    # Observações automáticas para o comitê
+    pendencias_docs = []
+    for ds in docs_status:
+        if not ds["presente"]:
+            pendencias_docs.append(f"{ds['nome']}: pendente")
+        elif ds["vencido"]:
+            pendencias_docs.append(f"{ds['nome']}: desatualizado")
+
+    # Votos do comitê (se estiver na etapa COMITE)
+    from .models import VotoComite
+    votos = proposta.votos_comite.select_related("usuario").all()
+    ja_votou = votos.filter(usuario=request.user).exists()
+    is_comite = etapa_ativa and etapa_ativa.etapa == "COMITE"
+
     return render(request, "emprestimos/esteira/detalhe.html", {
         "proposta": proposta,
         "etapa_ativa": etapa_ativa,
@@ -284,6 +317,11 @@ def detalhe_proposta(request, proposta_id):
         "parceiros": parceiros,
         "pode_atuar": pode_atuar,
         "progresso": progresso,
+        "docs_status": docs_status,
+        "pendencias_docs": pendencias_docs,
+        "votos": votos,
+        "ja_votou": ja_votou,
+        "is_comite": is_comite,
     })
 
 
@@ -519,7 +557,53 @@ def _liberar_proposta(request, proposta):
 
 
 # ==============================================================================
-# 6. SIMULAÇÃO AJAX (chamada pelo formulário de nova proposta)
+# 6. VOTAÇÃO DO COMITÊ
+# ==============================================================================
+
+@login_required
+@transaction.atomic
+def votar_comite(request, proposta_id):
+    """Registra voto do membro do comitê com validação de senha."""
+    from .models import VotoComite
+    from django.contrib.auth import authenticate
+
+    proposta = get_object_or_404(PropostaEmprestimo, id=proposta_id)
+
+    if request.method != "POST":
+        return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+    # Valida senha do usuário
+    senha = request.POST.get("senha", "")
+    user = authenticate(username=request.user.username, password=senha)
+    if not user:
+        messages.error(request, "Senha inválida. Voto não registrado.")
+        return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+    # Verifica se já votou
+    if VotoComite.objects.filter(proposta=proposta, usuario=request.user).exists():
+        messages.warning(request, "Você já registrou seu voto nesta proposta.")
+        return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+    decisao = request.POST.get("decisao", "")
+    observacoes = request.POST.get("observacoes_voto", "")
+
+    if decisao not in ("DEFERIDO", "INDEFERIDO"):
+        messages.error(request, "Decisão inválida.")
+        return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+    VotoComite.objects.create(
+        proposta=proposta,
+        usuario=request.user,
+        decisao=decisao,
+        observacoes=observacoes,
+    )
+
+    messages.success(request, f"Voto registrado: {decisao}")
+    return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+
+# ==============================================================================
+# 7. SIMULAÇÃO AJAX (chamada pelo formulário de nova proposta)
 # ==============================================================================
 
 @login_required

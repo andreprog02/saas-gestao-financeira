@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-journal-text me-2"></i>Cartas de Cobrança Emitidas</h4>
+  <a href="{% url 'cobranca:carta_listar' %}" class="btn btn-danger btn-sm">
+    <i class="bi bi-envelope-paper me-1"></i>Emitir Nova Carta
+  </a>
+</div>
+
+<!-- FILTROS -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="d-flex gap-2 align-items-end">
+      <div>
+        <label class="form-label small fw-semibold mb-1">Ano:</label>
+        <select name="ano" class="form-select form-select-sm" style="width: 120px;">
+          <option value="">Todos</option>
+          {% for a in anos %}
+          <option value="{{ a }}" {% if ano_filtro == a|stringformat:"d" %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="flex-grow-1">
+        <label class="form-label small fw-semibold mb-1">Cliente:</label>
+        <input type="text" name="q" class="form-control form-control-sm" value="{{ busca }}" placeholder="Buscar por nome...">
+      </div>
+      <div>
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search me-1"></i>Filtrar</button>
+        <a href="{% url 'cobranca:carta_consultar' %}" class="btn btn-sm btn-outline-secondary">Limpar</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Nº Correspondência</th>
+          <th>Cliente</th>
+          <th>Contrato</th>
+          <th class="text-center">Parcelas</th>
+          <th class="text-end">Valor</th>
+          <th>Data Emissão</th>
+          <th>Emitido por</th>
+          <th class="text-end">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cartas %}
+        <tr>
+          <td><span class="badge bg-dark fs-6">{{ c.numero_formatado }}</span></td>
+          <td class="fw-semibold">{{ c.cliente.nome_completo }}</td>
+          <td><span class="badge bg-secondary">{{ c.emprestimo.codigo_contrato }}</span></td>
+          <td class="text-center">{{ c.qtd_parcelas_atraso }}</td>
+          <td class="text-end fw-bold text-danger">R$ {{ c.valor_total_atraso|floatformat:2 }}</td>
+          <td>{{ c.data_emissao|date:"d/m/Y" }}</td>
+          <td class="small text-muted">{{ c.emitido_por.get_full_name|default:c.emitido_por.username }}</td>
+          <td class="text-end">
+            <a href="{% url 'cobranca:carta_reimprimir' c.id %}" class="btn btn-sm btn-outline-danger"
+               title="Reimprimir carta">
+              <i class="bi bi-printer me-1"></i>PDF
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Nenhuma carta emitida{% if ano_filtro or busca %} com estes filtros{% endif %}.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

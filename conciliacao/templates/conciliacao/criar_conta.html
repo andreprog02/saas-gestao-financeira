@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="bi bi-wallet-fill me-2"></i>Nova Conta Bancária</h5>
+      </div>
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Nome / Apelido</label>
+            <input type="text" name="nome" class="form-control" placeholder="Ex: Conta Principal Itaú" required>
+          </div>
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Banco</label>
+              <select name="banco" class="form-select" required>
+                {% for codigo, nome in bancos %}
+                <option value="{{ codigo }}">{{ nome }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Tipo</label>
+              <select name="tipo" class="form-select">
+                <option value="CC">Conta Corrente</option>
+                <option value="CP">Conta Poupança</option>
+              </select>
+            </div>
+          </div>
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Agência</label>
+              <input type="text" name="agencia" class="form-control" placeholder="0001">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Conta</label>
+              <input type="text" name="conta" class="form-control" placeholder="12345-6">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Saldo Inicial</label>
+              <input type="text" name="saldo_inicial" class="form-control" value="0,00" placeholder="0,00">
+            </div>
+          </div>
+          <div class="d-flex justify-content-between">
+            <a href="{% url 'conciliacao:dashboard' %}" class="btn btn-outline-secondary">Voltar</a>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Criar Conta</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

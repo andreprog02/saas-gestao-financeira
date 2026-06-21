@@ -13,6 +13,7 @@ urlpatterns = [
     path("cobranca/", include("cobranca.urls")),
     path("contas/", include("contas.urls")),
     path("financeiro/", include("financeiro.urls")),
+    path("conciliacao/", include("conciliacao.urls")),
 ]
 
 # Servir media em desenvolvimento

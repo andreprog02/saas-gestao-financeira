@@ -9,7 +9,7 @@ from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
 
 from .forms import ClienteForm
-from .models import Cliente
+from .models import Cliente, DocumentoCliente
 from contas.models import ContaCorrente
 
 @login_required
@@ -58,7 +58,16 @@ def clientes_editar(request, cliente_id: int):
     else:
         form = ClienteForm(instance=cliente)
 
-    return render(request, "clientes/form.html", {"form": form, "titulo": "Editar Cliente"})
+    documentos = cliente.documentos.all()
+    tipos_doc = DocumentoCliente.TIPO_CHOICES
+
+    return render(request, "clientes/form.html", {
+        "form": form,
+        "titulo": "Editar Cliente",
+        "cliente": cliente,
+        "documentos": documentos,
+        "tipos_doc": tipos_doc,
+    })
 
 
 @login_required
@@ -178,3 +187,50 @@ def importar_clientes_csv(request):
         return redirect('clientes:cliente_list')
 
     return render(request, 'clientes/importar.html')
+
+# ==============================================================================
+# UPLOAD DE DOCUMENTOS
+# ==============================================================================
+
+@login_required
+def upload_documento(request, cliente_id):
+    """Upload de documento do cliente."""
+    cliente = get_object_or_404(Cliente, id=cliente_id)
+
+    if request.method == "POST":
+        tipo = request.POST.get("tipo", "")
+        arquivo = request.FILES.get("arquivo")
+        mes_ref = request.POST.get("mes_referencia", "")
+        ano_ref = request.POST.get("ano_referencia", "")
+        descricao = request.POST.get("descricao", "")
+
+        if not tipo or not arquivo:
+            messages.error(request, "Selecione o tipo e o arquivo.")
+            return redirect("clientes:editar", cliente_id=cliente.id)
+
+        doc = DocumentoCliente(
+            cliente=cliente,
+            tipo=tipo,
+            arquivo=arquivo,
+            descricao=descricao,
+        )
+
+        if mes_ref and ano_ref:
+            doc.mes_referencia = int(mes_ref)
+            doc.ano_referencia = int(ano_ref)
+
+        doc.save()
+        messages.success(request, f"Documento '{doc.get_tipo_display()}' enviado com sucesso.")
+
+    return redirect("clientes:editar", cliente_id=cliente.id)
+
+
+@login_required
+def excluir_documento(request, doc_id):
+    """Exclui um documento do cliente."""
+    doc = get_object_or_404(DocumentoCliente, id=doc_id)
+    cliente_id = doc.cliente_id
+    doc.arquivo.delete(save=False)
+    doc.delete()
+    messages.info(request, "Documento excluído.")
+    return redirect("clientes:editar", cliente_id=cliente_id)

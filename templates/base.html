@@ -86,9 +86,33 @@
             <a class="nav-link" href="/recebiveis/">Recebíveis</a>
         </li>
         
-        <li class="nav-item">
-            <a class="nav-link text-info fw-bold" href="{% url 'cobranca:painel_cobranca' %}">
+        <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle text-info fw-bold" href="#" role="button" data-bs-toggle="dropdown">
                 <i class="bi bi-exclamation-triangle"></i> Cobrança
+            </a>
+            <ul class="dropdown-menu">
+                <li>
+                    <a class="dropdown-item" href="{% url 'cobranca:painel_cobranca' %}">
+                        <i class="bi bi-kanban me-2"></i>Painel de Cobrança
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'cobranca:carta_listar' %}">
+                        <i class="bi bi-envelope-paper me-2"></i>Emitir Carta de Cobrança
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'cobranca:carta_consultar' %}">
+                        <i class="bi bi-journal-text me-2"></i>Consultar Cartas
+                    </a>
+                </li>
+            </ul>
+        </li>
+
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'conciliacao:dashboard' %}">
+                <i class="bi bi-bank"></i> Conciliação
             </a>
         </li>
       </ul>

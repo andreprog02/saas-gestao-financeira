@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0"><i class="bi bi-bank me-2"></i>Conciliação Bancária</h1>
+  <div>
+    <a href="{% url 'conciliacao:criar_conta' %}" class="btn btn-outline-primary btn-sm me-2">
+      <i class="bi bi-plus-circle me-1"></i>Nova Conta
+    </a>
+    <a href="{% url 'conciliacao:importar' %}" class="btn btn-primary btn-sm">
+      <i class="bi bi-upload me-1"></i>Importar Extrato
+    </a>
+  </div>
+</div>
+
+<!-- RESUMO -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card bg-warning bg-opacity-10 border-warning shadow-sm">
+      <div class="card-body text-center py-3">
+        <div class="fs-2 fw-bold text-warning">{{ total_pendentes }}</div>
+        <small class="text-muted">Lançamentos Pendentes</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card bg-success bg-opacity-10 border-success shadow-sm">
+      <div class="card-body text-center py-3">
+        <div class="fs-2 fw-bold text-success">{{ total_conciliados }}</div>
+        <small class="text-muted">Conciliados</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card bg-primary bg-opacity-10 border-primary shadow-sm">
+      <div class="card-body text-center py-3">
+        <div class="fs-2 fw-bold text-primary">{{ contas|length }}</div>
+        <small class="text-muted">Contas Bancárias</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONTAS BANCÁRIAS -->
+{% for c in contas %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <div>
+      <strong><i class="bi bi-wallet2 me-1"></i>{{ c.nome }}</strong>
+      <span class="text-muted ms-2 small">{{ c.get_banco_display }} · Ag {{ c.agencia }} · Conta {{ c.conta }}</span>
+    </div>
+    <div>
+      <span class="badge bg-dark fs-6 me-2">Saldo: R$ {{ c.saldo_calculado|floatformat:2 }}</span>
+      <a href="{% url 'conciliacao:extrato_conta' c.id %}" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-journal-text me-1"></i>Ver Extrato
+      </a>
+      <a href="{% url 'conciliacao:extrato_conta_pdf' c.id %}" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+      </a>
+    </div>
+  </div>
+
+  {% if c.ultimos_extratos %}
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Arquivo</th>
+          <th>Período</th>
+          <th>Lançamentos</th>
+          <th>Status</th>
+          <th class="text-end">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in c.ultimos_extratos %}
+        <tr>
+          <td class="small"><i class="bi bi-file-earmark-text me-1"></i>{{ e.arquivo_nome }}</td>
+          <td class="small">{{ e.periodo_inicio|date:"d/m/Y" }} a {{ e.periodo_fim|date:"d/m/Y" }}</td>
+          <td class="small">{{ e.total_conciliados }}/{{ e.total_lancamentos }}</td>
+          <td>
+            {% if e.status == 'CONCILIADO' %}
+              <span class="badge bg-success">Conciliado</span>
+            {% elif e.status == 'IMPORTADO' %}
+              <span class="badge bg-warning text-dark">Parcial</span>
+            {% else %}
+              <span class="badge bg-secondary">{{ e.get_status_display }}</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{% url 'conciliacao:detalhe_extrato' e.id %}" class="btn btn-sm btn-outline-primary py-0">
+              <i class="bi bi-eye"></i>
+            </a>
+            <a href="{% url 'conciliacao:exportar_pdf' e.id %}" class="btn btn-sm btn-outline-danger py-0">
+              <i class="bi bi-file-pdf"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-center text-muted py-3 small">
+    Nenhum extrato importado para esta conta.
+  </div>
+  {% endif %}
+</div>
+{% empty %}
+<div class="card shadow-sm">
+  <div class="card-body text-center text-muted py-4">
+    Nenhuma conta cadastrada. <a href="{% url 'conciliacao:criar_conta' %}">Crie uma</a> para começar.
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

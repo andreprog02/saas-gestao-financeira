@@ -3,11 +3,12 @@ from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Min, Sum, Count
 from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse
 
 # Imports dos outros apps
 from emprestimos.models import Emprestimo, Parcela, ParcelaStatus
 from recebiveis.models import ContratoRecebivel, ItemRecebivel
-from .models import HistoricoCobranca
+from .models import HistoricoCobranca, CartaCobranca
 
 def calcular_acao_sugerida(dias_atraso):
     if dias_atraso <= 5:
@@ -153,3 +154,390 @@ def registrar_evento(request):
             messages.error(request, f"Erro ao salvar: {str(e)}")
 
     return redirect('cobranca:painel_cobranca')
+
+# ==============================================================================
+# CARTAS DE COBRANÇA
+# ==============================================================================
+
+MESES_EXTENSO = {
+    1: "janeiro", 2: "fevereiro", 3: "março", 4: "abril",
+    5: "maio", 6: "junho", 7: "julho", 8: "agosto",
+    9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro",
+}
+
+
+@login_required
+def listar_inadimplentes_carta(request):
+    """Lista clientes com parcelas em atraso para emissão de carta."""
+    hoje = timezone.localdate()
+
+    parcelas_vencidas = Parcela.objects.filter(
+        status=ParcelaStatus.ABERTA,
+        vencimento__lt=hoje,
+    ).select_related("emprestimo", "emprestimo__cliente")
+
+    # Agrupa por empréstimo
+    emprestimos_ids = set(parcelas_vencidas.values_list("emprestimo_id", flat=True))
+    devedores = []
+
+    for emp_id in emprestimos_ids:
+        parcelas = parcelas_vencidas.filter(emprestimo_id=emp_id).order_by("vencimento")
+        if not parcelas.exists():
+            continue
+
+        emp = parcelas.first().emprestimo
+        valor_total = parcelas.aggregate(s=Sum("valor"))["s"]
+        qtd = parcelas.count()
+        dias_atraso = (hoje - parcelas.first().vencimento).days
+
+        devedores.append({
+            "emprestimo": emp,
+            "cliente": emp.cliente,
+            "qtd_parcelas": qtd,
+            "valor_total": valor_total,
+            "dias_atraso": dias_atraso,
+            "primeiro_vencimento": parcelas.first().vencimento,
+        })
+
+    devedores.sort(key=lambda d: d["dias_atraso"], reverse=True)
+
+    return render(request, "cobranca/carta_listar.html", {
+        "devedores": devedores,
+    })
+
+
+@login_required
+def emitir_carta(request, emprestimo_id):
+    """Gera a carta de cobrança em PDF e registra no histórico."""
+    from decimal import Decimal
+    from num2words import num2words
+
+    hoje = timezone.localdate()
+    emp = get_object_or_404(Emprestimo, id=emprestimo_id)
+
+    # Busca parcelas em atraso
+    parcelas = Parcela.objects.filter(
+        emprestimo=emp,
+        status=ParcelaStatus.ABERTA,
+        vencimento__lt=hoje,
+    ).order_by("vencimento")
+
+    if not parcelas.exists():
+        messages.warning(request, "Este contrato não possui parcelas em atraso.")
+        return redirect("cobranca:carta_listar")
+
+    qtd = parcelas.count()
+    valor_total = parcelas.aggregate(s=Sum("valor"))["s"]
+
+    # Gera número sequencial
+    ano = hoje.year
+    numero = CartaCobranca.proximo_numero(ano)
+    numero_fmt = CartaCobranca.gerar_numero_formatado(numero, ano)
+
+    # Salva a carta
+    carta = CartaCobranca.objects.create(
+        numero=numero,
+        ano=ano,
+        numero_formatado=numero_fmt,
+        cliente=emp.cliente,
+        emprestimo=emp,
+        qtd_parcelas_atraso=qtd,
+        valor_total_atraso=valor_total,
+        data_emissao=hoje,
+        emitido_por=request.user,
+    )
+
+    # Registra evento no histórico de cobrança
+    HistoricoCobranca.objects.create(
+        cliente=emp.cliente,
+        emprestimo=emp,
+        usuario=request.user,
+        descricao=f"Emissão de carta de cobrança nº {numero_fmt} — "
+                  f"{qtd} parcela(s) em atraso totalizando R$ {valor_total:,.2f}",
+        tipo_contrato="EMPRESTIMO",
+    )
+
+    # Valor por extenso
+    valor_centavos = int((valor_total % 1) * 100)
+    valor_inteiro = int(valor_total)
+    extenso = num2words(valor_inteiro, lang="pt_BR")
+    if valor_centavos > 0:
+        extenso_centavos = num2words(valor_centavos, lang="pt_BR")
+        valor_extenso = f"{extenso} reais e {extenso_centavos} centavos"
+    else:
+        valor_extenso = f"{extenso} reais"
+
+    # Data por extenso
+    mes_extenso = MESES_EXTENSO.get(hoje.month, "")
+    data_extenso = f"{hoje.day} de {mes_extenso} de {hoje.year}"
+
+    # === GERA O PDF ===
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm, cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT, TA_JUSTIFY
+    from reportlab.lib import colors
+
+    response = HttpResponse(content_type="application/pdf")
+    nome_arquivo = f"carta_cobranca_{numero_fmt.replace('/', '_')}.pdf"
+    response["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+
+    doc = SimpleDocTemplate(
+        response, pagesize=A4,
+        topMargin=25*mm, bottomMargin=25*mm,
+        leftMargin=25*mm, rightMargin=25*mm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Estilos customizados
+    estilo_nome = ParagraphStyle(
+        "Nome", parent=styles["Normal"],
+        fontSize=12, fontName="Helvetica-Bold",
+    )
+    estilo_numero = ParagraphStyle(
+        "Numero", parent=styles["Normal"],
+        fontSize=11, fontName="Helvetica-Bold", alignment=TA_RIGHT,
+    )
+    estilo_ref = ParagraphStyle(
+        "Ref", parent=styles["Normal"],
+        fontSize=11, fontName="Helvetica-Bold", spaceAfter=12,
+    )
+    estilo_corpo = ParagraphStyle(
+        "Corpo", parent=styles["Normal"],
+        fontSize=11, leading=18, alignment=TA_JUSTIFY,
+        spaceAfter=12,
+    )
+    estilo_data = ParagraphStyle(
+        "Data", parent=styles["Normal"],
+        fontSize=11, alignment=TA_RIGHT, spaceBefore=30,
+    )
+    estilo_assinatura = ParagraphStyle(
+        "Assinatura", parent=styles["Normal"],
+        fontSize=11, alignment=TA_CENTER, spaceBefore=50,
+    )
+
+    # CABEÇALHO: nome à esquerda, número à direita
+    cli = emp.cliente
+    endereco = f"{cli.logradouro}, {cli.numero}"
+    if cli.complemento:
+        endereco += f" - {cli.complemento}"
+    endereco += f" — {cli.bairro}, {cli.cidade}/{cli.uf} - CEP: {cli.cep}"
+
+    estilo_endereco = ParagraphStyle(
+        "Endereco", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#444444"),
+    )
+
+    header_data = [[
+        [Paragraph(cli.nome_completo, estilo_nome), Paragraph(endereco, estilo_endereco)],
+        Paragraph(f"Nº {numero_fmt}", estilo_numero),
+    ]]
+
+    header_table = Table(header_data, colWidths=[110*mm, 50*mm])
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, colors.black),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 15*mm))
+
+    # REF
+    elements.append(Paragraph(
+        f"<b>Ref:</b> Carta de cobrança referente ao contrato {emp.codigo_contrato}",
+        estilo_ref,
+    ))
+    elements.append(Spacer(1, 5*mm))
+
+    # SAUDAÇÃO
+    elements.append(Paragraph("Prezado(a) Senhor(a),", estilo_corpo))
+
+    # CORPO
+    valor_formatado = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    texto = (
+        f"Informamos que Vossa Senhoria possui <b>{qtd} ({num2words(qtd, lang='pt_BR')}) "
+        f"parcela{'s' if qtd > 1 else ''}</b> em atraso referente{'s' if qtd > 1 else ''} "
+        f"ao contrato <b>{emp.codigo_contrato}</b>, totalizando o valor de "
+        f"<b>{valor_formatado} ({valor_extenso})</b>, não acrescido de juros e multa contratuais."
+    )
+    elements.append(Paragraph(texto, estilo_corpo))
+
+    texto2 = (
+        "Solicitamos a regularização do débito no prazo de <b>15 (quinze) dias</b> "
+        "a contar do recebimento desta correspondência. O não pagamento dentro do prazo "
+        "estipulado acarretará as seguintes medidas:"
+    )
+    elements.append(Paragraph(texto2, estilo_corpo))
+
+    # Lista de medidas
+    medidas = [
+        "Inscrição nos sistemas de proteção ao crédito (SPC/Serasa);",
+        "Protesto do título em Cartório de Protestos;",
+        "Execução judicial do débito, com acréscimo de custas processuais e honorários advocatícios.",
+    ]
+    for i, medida in enumerate(medidas, 1):
+        elements.append(Paragraph(
+            f"&nbsp;&nbsp;&nbsp;&nbsp;<b>{i}.</b> {medida}",
+            estilo_corpo,
+        ))
+
+    texto3 = (
+        "Colocamo-nos à disposição para negociação e esclarecimentos que se fizerem necessários."
+    )
+    elements.append(Paragraph(texto3, estilo_corpo))
+
+    elements.append(Paragraph("Atenciosamente,", estilo_corpo))
+
+    # DATA E LOCAL
+    elements.append(Paragraph(
+        f"Rio de Janeiro, {data_extenso}.",
+        estilo_data,
+    ))
+
+    # ASSINATURA
+    elements.append(Spacer(1, 20*mm))
+    elements.append(Paragraph("_" * 40, estilo_assinatura))
+    elements.append(Paragraph("<b>Diretor Financeiro</b>", estilo_assinatura))
+
+    doc.build(elements)
+
+    messages.success(request, f"Carta de cobrança nº {numero_fmt} emitida para {emp.cliente.nome_completo}.")
+    return response
+
+
+@login_required
+def consultar_cartas(request):
+    """Lista todas as cartas de cobrança emitidas."""
+    cartas = CartaCobranca.objects.select_related("cliente", "emprestimo", "emitido_por").all()
+
+    # Filtro por ano
+    ano_filtro = request.GET.get("ano", "")
+    if ano_filtro:
+        cartas = cartas.filter(ano=int(ano_filtro))
+
+    # Filtro por cliente
+    busca = request.GET.get("q", "")
+    if busca:
+        cartas = cartas.filter(cliente__nome_completo__icontains=busca)
+
+    # Anos disponíveis para filtro
+    anos = CartaCobranca.objects.values_list("ano", flat=True).distinct().order_by("-ano")
+
+    return render(request, "cobranca/carta_consultar.html", {
+        "cartas": cartas,
+        "anos": anos,
+        "ano_filtro": ano_filtro,
+        "busca": busca,
+    })
+
+
+@login_required
+def reimprimir_carta(request, carta_id):
+    """Reimprimir uma carta já emitida."""
+    from decimal import Decimal
+    from num2words import num2words
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_JUSTIFY
+    from reportlab.lib import colors
+
+    carta = get_object_or_404(CartaCobranca.objects.select_related("cliente", "emprestimo"), id=carta_id)
+
+    valor = carta.valor_total_atraso
+    qtd = carta.qtd_parcelas_atraso
+    emp = carta.emprestimo
+
+    valor_centavos = int((valor % 1) * 100)
+    valor_inteiro = int(valor)
+    extenso = num2words(valor_inteiro, lang="pt_BR")
+    if valor_centavos > 0:
+        extenso_centavos = num2words(valor_centavos, lang="pt_BR")
+        valor_extenso = f"{extenso} reais e {extenso_centavos} centavos"
+    else:
+        valor_extenso = f"{extenso} reais"
+
+    mes_extenso = MESES_EXTENSO.get(carta.data_emissao.month, "")
+    data_extenso = f"{carta.data_emissao.day} de {mes_extenso} de {carta.data_emissao.year}"
+
+    response = HttpResponse(content_type="application/pdf")
+    nome_arquivo = f"carta_cobranca_{carta.numero_formatado.replace('/', '_')}.pdf"
+    response["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+
+    doc = SimpleDocTemplate(
+        response, pagesize=A4,
+        topMargin=25*mm, bottomMargin=25*mm,
+        leftMargin=25*mm, rightMargin=25*mm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+
+    estilo_nome = ParagraphStyle("N", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold")
+    estilo_numero = ParagraphStyle("Num", parent=styles["Normal"], fontSize=11, fontName="Helvetica-Bold", alignment=TA_RIGHT)
+    estilo_ref = ParagraphStyle("R", parent=styles["Normal"], fontSize=11, fontName="Helvetica-Bold", spaceAfter=12)
+    estilo_corpo = ParagraphStyle("C", parent=styles["Normal"], fontSize=11, leading=18, alignment=TA_JUSTIFY, spaceAfter=12)
+    estilo_data = ParagraphStyle("D", parent=styles["Normal"], fontSize=11, alignment=TA_RIGHT, spaceBefore=30)
+    estilo_assinatura = ParagraphStyle("A", parent=styles["Normal"], fontSize=11, alignment=TA_CENTER, spaceBefore=50)
+
+    cli = carta.cliente
+    endereco = f"{cli.logradouro}, {cli.numero}"
+    if cli.complemento:
+        endereco += f" - {cli.complemento}"
+    endereco += f" — {cli.bairro}, {cli.cidade}/{cli.uf} - CEP: {cli.cep}"
+
+    estilo_endereco = ParagraphStyle(
+        "Endereco", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#444444"),
+    )
+
+    header_data = [[
+        [Paragraph(cli.nome_completo, estilo_nome), Paragraph(endereco, estilo_endereco)],
+        Paragraph(f"Nº {carta.numero_formatado}", estilo_numero),
+    ]]
+    
+    ht = Table(header_data, colWidths=[110*mm, 50*mm])
+    ht.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, colors.black),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+    ]))
+    elements.append(ht)
+    elements.append(Spacer(1, 15*mm))
+
+    elements.append(Paragraph(f"<b>Ref:</b> Carta de cobrança referente ao contrato {emp.codigo_contrato}", estilo_ref))
+    elements.append(Spacer(1, 5*mm))
+    elements.append(Paragraph("Prezado(a) Senhor(a),", estilo_corpo))
+
+    valor_fmt = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    elements.append(Paragraph(
+        f"Informamos que Vossa Senhoria possui <b>{qtd} ({num2words(qtd, lang='pt_BR')}) "
+        f"parcela{'s' if qtd > 1 else ''}</b> em atraso referente{'s' if qtd > 1 else ''} "
+        f"ao contrato <b>{emp.codigo_contrato}</b>, totalizando o valor de "
+        f"<b>{valor_fmt} ({valor_extenso})</b>, não acrescido de juros e multa contratuais.",
+        estilo_corpo,
+    ))
+
+    elements.append(Paragraph(
+        "Solicitamos a regularização do débito no prazo de <b>15 (quinze) dias</b> "
+        "a contar do recebimento desta correspondência. O não pagamento dentro do prazo "
+        "estipulado acarretará as seguintes medidas:",
+        estilo_corpo,
+    ))
+
+    for i, m in enumerate([
+        "Inscrição nos sistemas de proteção ao crédito (SPC/Serasa);",
+        "Protesto do título em Cartório de Protestos;",
+        "Execução judicial do débito, com acréscimo de custas processuais e honorários advocatícios.",
+    ], 1):
+        elements.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;<b>{i}.</b> {m}", estilo_corpo))
+
+    elements.append(Paragraph("Colocamo-nos à disposição para negociação e esclarecimentos que se fizerem necessários.", estilo_corpo))
+    elements.append(Paragraph("Atenciosamente,", estilo_corpo))
+    elements.append(Paragraph(f"{carta.local_emissao}, {data_extenso}.", estilo_data))
+    elements.append(Spacer(1, 20*mm))
+    elements.append(Paragraph("_" * 40, estilo_assinatura))
+    elements.append(Paragraph("<b>Diretor Financeiro</b>", estilo_assinatura))
+
+    doc.build(elements)
+    return response

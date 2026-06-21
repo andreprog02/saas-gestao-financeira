@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-journal-text me-2"></i>Extrato — {{ conta.nome }}</h4>
+    <small class="text-muted">{{ conta.get_banco_display }} · Ag {{ conta.agencia }} · Conta {{ conta.conta }}</small>
+  </div>
+  <div>
+    <a href="{% url 'conciliacao:extrato_conta_pdf' conta.id %}?periodo={{ periodo }}&data_inicio={{ data_inicio|date:'Y-m-d' }}&data_fim={{ data_fim|date:'Y-m-d' }}"
+       class="btn btn-danger btn-sm me-1">
+      <i class="bi bi-file-earmark-pdf me-1"></i>Exportar PDF
+    </a>
+    <a href="{% url 'conciliacao:dashboard' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Voltar
+    </a>
+  </div>
+</div>
+
+<!-- FILTRO DE PERÍODO -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="row align-items-end g-2">
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">Período:</label>
+        <div class="btn-group btn-group-sm">
+          <a href="?periodo=7dias" class="btn {% if periodo == '7dias' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+            7 dias
+          </a>
+          <a href="?periodo=semana" class="btn {% if periodo == 'semana' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+            Semana
+          </a>
+          <a href="?periodo=mes" class="btn {% if periodo == 'mes' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+            Mês Atual
+          </a>
+          <a href="?periodo=mes_anterior" class="btn {% if periodo == 'mes_anterior' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+            Mês Anterior
+          </a>
+        </div>
+      </div>
+      <div class="col">
+        <form method="get" class="d-flex align-items-end gap-2">
+          <input type="hidden" name="periodo" value="custom">
+          <div>
+            <label class="form-label small fw-semibold mb-1">De:</label>
+            <input type="date" name="data_inicio" class="form-control form-control-sm"
+                   value="{{ data_inicio|date:'Y-m-d' }}">
+          </div>
+          <div>
+            <label class="form-label small fw-semibold mb-1">Até:</label>
+            <input type="date" name="data_fim" class="form-control form-control-sm"
+                   value="{{ data_fim|date:'Y-m-d' }}">
+          </div>
+          <div>
+            <button type="submit" class="btn btn-sm btn-primary">
+              <i class="bi bi-search me-1"></i>Filtrar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="mt-2 small text-muted">
+      Exibindo: <strong>{{ data_inicio|date:"d/m/Y" }}</strong> a <strong>{{ data_fim|date:"d/m/Y" }}</strong>
+      · {{ total_lancamentos }} lançamento{{ total_lancamentos|pluralize:"s" }}
+    </div>
+  </div>
+</div>
+
+<!-- RESUMO FINANCEIRO -->
+<div class="row g-3 mb-3">
+  <div class="col">
+    <div class="card border-secondary shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Saldo Anterior</small>
+        <span class="fw-bold">R$ {{ saldo_anterior|floatformat:2 }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-success shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Créditos</small>
+        <span class="fw-bold text-success fs-5">+ R$ {{ total_creditos|floatformat:2 }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-danger shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Débitos</small>
+        <span class="fw-bold text-danger fs-5">- R$ {{ total_debitos|floatformat:2 }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-primary shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Saldo Período</small>
+        <span class="fw-bold {% if saldo_periodo >= 0 %}text-success{% else %}text-danger{% endif %}">
+          R$ {{ saldo_periodo|floatformat:2 }}
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card bg-dark text-white shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="d-block" style="opacity:0.7;">Saldo Final</small>
+        <span class="fw-bold fs-5">R$ {{ saldo_final|floatformat:2 }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TABELA DE LANÇAMENTOS -->
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th style="width: 85px;">Data</th>
+          <th>Descrição</th>
+          <th class="text-end" style="width: 110px;">Crédito</th>
+          <th class="text-end" style="width: 110px;">Débito</th>
+          <th class="text-end" style="width: 120px;">Saldo</th>
+          <th style="width: 80px;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Linha de saldo anterior -->
+        <tr class="table-light">
+          <td class="small fw-bold">{{ data_inicio|date:"d/m/Y" }}</td>
+          <td class="fw-bold small">SALDO ANTERIOR</td>
+          <td></td>
+          <td></td>
+          <td class="text-end fw-bold">R$ {{ saldo_anterior|floatformat:2 }}</td>
+          <td></td>
+        </tr>
+
+        {% for l in lancamentos %}
+        <tr>
+          <td class="small">{{ l.data|date:"d/m/Y" }}</td>
+          <td>
+            <span class="small">{{ l.descricao }}</span>
+            {% if l.documento %}<br><span class="text-muted" style="font-size:0.7rem;">Doc: {{ l.documento }}</span>{% endif %}
+          </td>
+          <td class="text-end fw-semibold text-success">
+            {% if l.is_credito %}R$ {{ l.valor_absoluto|floatformat:2 }}{% endif %}
+          </td>
+          <td class="text-end fw-semibold text-danger">
+            {% if not l.is_credito %}R$ {{ l.valor_absoluto|floatformat:2 }}{% endif %}
+          </td>
+          <td class="text-end fw-bold small">R$ {{ l.saldo_corrido|floatformat:2 }}</td>
+          <td>
+            {% if l.status == 'CONCILIADO' %}
+              <span class="badge bg-success">Auto</span>
+            {% elif l.status == 'MANUAL' %}
+              <span class="badge bg-info">Manual</span>
+            {% elif l.status == 'CRIADO' %}
+              <span class="badge bg-primary">Criado</span>
+            {% elif l.status == 'IGNORADO' %}
+              <span class="badge bg-secondary">Ignorado</span>
+            {% else %}
+              <span class="badge bg-warning text-dark">Pendente</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Nenhum lançamento neste período.</td></tr>
+        {% endfor %}
+
+        <!-- Linha de saldo final -->
+        {% if lancamentos %}
+        <tr class="table-dark">
+          <td class="small fw-bold">{{ data_fim|date:"d/m/Y" }}</td>
+          <td class="fw-bold small">SALDO FINAL</td>
+          <td class="text-end fw-bold text-success small">R$ {{ total_creditos|floatformat:2 }}</td>
+          <td class="text-end fw-bold text-danger small">R$ {{ total_debitos|floatformat:2 }}</td>
+          <td class="text-end fw-bold fs-6">R$ {{ saldo_final|floatformat:2 }}</td>
+          <td></td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- EXTRATOS IMPORTADOS DESTA CONTA -->
+{% if extratos %}
+<div class="card shadow-sm mt-4">
+  <div class="card-header py-2"><strong><i class="bi bi-file-earmark-arrow-up me-1"></i>Extratos Importados</strong></div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr><th>Arquivo</th><th>Período</th><th>Lançamentos</th><th>Status</th><th class="text-end">Ação</th></tr>
+      </thead>
+      <tbody>
+        {% for e in extratos %}
+        <tr>
+          <td class="small">{{ e.arquivo_nome }}</td>
+          <td class="small">{{ e.periodo_inicio|date:"d/m/Y" }} a {{ e.periodo_fim|date:"d/m/Y" }}</td>
+          <td class="small">{{ e.total_conciliados }}/{{ e.total_lancamentos }}</td>
+          <td>
+            {% if e.status == 'CONCILIADO' %}<span class="badge bg-success">OK</span>
+            {% else %}<span class="badge bg-warning text-dark">Parcial</span>{% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{% url 'conciliacao:detalhe_extrato' e.id %}" class="btn btn-sm btn-outline-primary py-0">Conciliar</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

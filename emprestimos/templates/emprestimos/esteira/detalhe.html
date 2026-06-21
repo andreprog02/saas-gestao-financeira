@@ -247,8 +247,145 @@
 
   </div>
 
-  <!-- COLUNA DIREITA: dossiê + timeline -->
+  <!-- COLUNA DIREITA: documentos + dossiê + comitê + timeline -->
   <div class="col-lg-5">
+
+    <!-- DOCUMENTOS DO CLIENTE -->
+    {% if etapa_ativa.etapa == 'DOCUMENTACAO' or etapa_ativa.etapa == 'ANALISE_CREDITO' or etapa_ativa.etapa == 'COMITE' or etapa_ativa.etapa == 'FORMALIZACAO' %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2 bg-dark text-white">
+        <strong><i class="bi bi-folder2-open me-1"></i>Documentos do Cliente</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          {% for ds in docs_status %}
+          <tr>
+            <td class="small" style="width: 40px;">
+              {% if ds.presente and not ds.vencido %}
+                <i class="bi bi-check-circle-fill text-success"></i>
+              {% elif ds.presente and ds.vencido %}
+                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+              {% else %}
+                <i class="bi bi-x-circle text-danger"></i>
+              {% endif %}
+            </td>
+            <td class="small">
+              {{ ds.nome }}
+              {% if ds.doc and ds.doc.mes_referencia %}
+                <span class="text-muted">({{ ds.doc.mes_referencia }}/{{ ds.doc.ano_referencia }})</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if ds.status == 'Ausente' %}
+                <span class="badge bg-danger">Ausente</span>
+              {% elif ds.status == 'Desatualizado' %}
+                <span class="badge bg-warning text-dark">Desatualizado</span>
+              {% elif ds.status == 'Vigente' %}
+                <span class="badge bg-success">Vigente</span>
+              {% else %}
+                <span class="badge bg-secondary">OK</span>
+              {% endif %}
+            </td>
+            <td class="text-end" style="width: 30px;">
+              {% if ds.doc %}
+                <a href="{{ ds.doc.arquivo.url }}" target="_blank" class="text-primary">
+                  <i class="bi bi-eye"></i>
+                </a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% if pendencias_docs %}
+        <div class="alert alert-warning py-1 mx-2 mb-2 small mt-2">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          <strong>Pendências:</strong>
+          {% for p in pendencias_docs %}
+            <br>· {{ p }}
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- VOTAÇÃO DO COMITÊ -->
+    {% if is_comite %}
+    <div class="card shadow-sm mb-3 border-primary">
+      <div class="card-header py-2 bg-primary text-white">
+        <strong><i class="bi bi-people-fill me-1"></i>Votação do Comitê</strong>
+      </div>
+      <div class="card-body">
+
+        <!-- Votos já registrados -->
+        {% if votos %}
+        <div class="mb-3">
+          {% for v in votos %}
+          <div class="d-flex justify-content-between align-items-center mb-2 p-2 rounded
+            {% if v.decisao == 'DEFERIDO' %}bg-success bg-opacity-10{% else %}bg-danger bg-opacity-10{% endif %}">
+            <div>
+              <strong class="small">{{ v.usuario.get_full_name|default:v.usuario.username }}</strong>
+              <span class="badge {% if v.decisao == 'DEFERIDO' %}bg-success{% else %}bg-danger{% endif %} ms-1">
+                {{ v.get_decisao_display }}
+              </span>
+              {% if v.observacoes %}
+                <br><span class="text-muted small fst-italic">{{ v.observacoes }}</span>
+              {% endif %}
+            </div>
+            <small class="text-muted">{{ v.data_voto|date:"d/m H:i" }}</small>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Formulário de voto (se ainda não votou) -->
+        {% if not ja_votou and pode_atuar %}
+        <form method="post" action="{% url 'emprestimos:esteira_votar' proposta.id %}">
+          {% csrf_token %}
+
+          {% if pendencias_docs %}
+          <div class="alert alert-warning py-2 small">
+            <strong>Pendências documentais a considerar:</strong>
+            {% for p in pendencias_docs %}
+              <div class="form-check mt-1">
+                <input class="form-check-input" type="checkbox" required id="ck-{{ forloop.counter }}">
+                <label class="form-check-label" for="ck-{{ forloop.counter }}">
+                  Ciente: {{ p }}
+                </label>
+              </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Observações do voto</label>
+            <textarea name="observacoes_voto" class="form-control form-control-sm" rows="2"
+                      placeholder="Ex: Cliente com comprovante de renda desatualizado — aceito mediante justificativa."></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Sua senha (para validar o voto)</label>
+            <input type="password" name="senha" class="form-control form-control-sm" required
+                   placeholder="Digite sua senha">
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" name="decisao" value="DEFERIDO" class="btn btn-success flex-fill">
+              <i class="bi bi-hand-thumbs-up me-1"></i>Deferir
+            </button>
+            <button type="submit" name="decisao" value="INDEFERIDO" class="btn btn-danger flex-fill">
+              <i class="bi bi-hand-thumbs-down me-1"></i>Indeferir
+            </button>
+          </div>
+        </form>
+        {% elif ja_votou %}
+        <p class="text-muted small text-center mb-0">
+          <i class="bi bi-check-circle me-1"></i>Você já registrou seu voto.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     <!-- DOSSIÊ DO CLIENTE -->
     {% if dossie %}
@@ -257,13 +394,11 @@
         <strong><i class="bi bi-person-vcard me-1"></i>Dossiê do Cliente</strong>
       </div>
       <div class="card-body small">
-        <!-- Score -->
         <div class="text-center mb-3">
           <span class="badge bg-{{ dossie.risco.score_cor }} fs-6 px-3 py-2">
             {{ dossie.risco.score_texto }}
           </span>
         </div>
-
         <div class="row">
           <div class="col-6 mb-2">
             <span class="text-muted">Contratos:</span><br>
@@ -284,7 +419,6 @@
             <strong>{{ dossie.pagamentos.media_dias_atraso }} dias</strong>
           </div>
         </div>
-
         {% if dossie.risco.atrasado_hoje_qtd > 0 %}
         <div class="alert alert-danger py-1 mt-2 small mb-0">
           <i class="bi bi-exclamation-triangle me-1"></i>
