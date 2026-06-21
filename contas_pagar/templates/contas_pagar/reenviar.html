@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header bg-warning">
+        <h5 class="mb-0"><i class="bi bi-arrow-repeat me-2"></i>Corrigir e Reenviar</h5>
+      </div>
+      <div class="card-body">
+
+        {% if conta.justificativa %}
+        <div class="alert alert-danger py-2 small">
+          <strong>Motivo da devolução/negação:</strong><br>{{ conta.justificativa }}
+        </div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Descrição</label>
+            <input type="text" name="descricao" class="form-control" value="{{ conta.descricao }}" required>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Valor (R$)</label>
+              <input type="text" name="valor" class="form-control" id="valor-brl"
+                     value="{{ conta.valor|floatformat:2 }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Vencimento</label>
+              <input type="date" name="vencimento" class="form-control"
+                     value="{{ conta.vencimento|date:'Y-m-d' }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Nova Fatura (opcional)</label>
+              <input type="file" name="fatura" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Observações</label>
+            <textarea name="observacoes" class="form-control" rows="2">{{ conta.observacoes }}</textarea>
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="{% url 'contas_pagar:painel' %}" class="btn btn-outline-secondary">Voltar</a>
+            <button type="submit" class="btn btn-warning">
+              <i class="bi bi-send me-1"></i>Reenviar para Aprovação
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var el = document.getElementById('valor-brl');
+  if(!el) return;
+  el.addEventListener('input', function(e){
+    var v = el.value.replace(/\D/g, '');
+    if(v === '') { el.value = ''; return; }
+    var num = parseInt(v, 10);
+    var reais = (num / 100).toFixed(2);
+    var parts = reais.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    el.value = parts.join(',');
+  });
+  el.addEventListener('keypress', function(e){
+    if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault();
+  });
+})();
+</script>
+{% endblock %}

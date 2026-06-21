@@ -35,6 +35,8 @@ urlpatterns = [
     path("esteira/<int:proposta_id>/devolver/", views_esteira.devolver_etapa, name="esteira_devolver"),
     path("esteira/<int:proposta_id>/negar/", views_esteira.negar_proposta, name="esteira_negar"),
     path("esteira/<int:proposta_id>/votar/", views_esteira.votar_comite, name="esteira_votar"),
+    path("esteira/<int:proposta_id>/contrato-pdf/", views_esteira.emitir_contrato_pdf, name="esteira_contrato_pdf"),
+    path("esteira/<int:proposta_id>/promissoria-pdf/", views_esteira.emitir_promissoria_pdf, name="esteira_promissoria_pdf"),
     path("esteira/checklist/<int:item_id>/", views_esteira.marcar_checklist, name="esteira_checklist"),
     path("esteira/simular/", views_esteira.simular_ajax, name="esteira_simular"),
 

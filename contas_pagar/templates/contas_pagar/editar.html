@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header bg-info text-white">
+        <h5 class="mb-0"><i class="bi bi-pencil me-2"></i>Editar e Reenviar Conta</h5>
+      </div>
+      <div class="card-body">
+
+        {% if conta.justificativa_negacao %}
+        <div class="alert alert-danger py-2 small">
+          <strong>Motivo da negação/devolução:</strong> {{ conta.justificativa_negacao }}
+        </div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+
+          <div class="row mb-3">
+            <div class="col-md-8">
+              <label class="form-label fw-semibold">Descrição da Conta</label>
+              <input type="text" name="descricao" class="form-control" value="{{ conta.descricao }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Tipo de Despesa</label>
+              <select name="tipo_despesa" class="form-select" required>
+                {% for val, label in tipos %}
+                <option value="{{ val }}" {% if val == conta.tipo_despesa %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Valor (R$)</label>
+              <input type="text" name="valor" id="valor-input" class="form-control"
+                     value="{{ conta.valor|floatformat:2 }}" required inputmode="decimal">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Data de Vencimento</label>
+              <input type="date" name="vencimento" class="form-control"
+                     value="{{ conta.vencimento|date:'Y-m-d' }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Substituir Fatura (opcional)</label>
+              <input type="file" name="fatura" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+              {% if conta.fatura %}
+              <small class="text-muted">
+                Atual: <a href="{{ conta.fatura.url }}" target="_blank">{{ conta.fatura.name|truncatechars:30 }}</a>
+              </small>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Observações</label>
+            <textarea name="observacoes" class="form-control" rows="2">{{ conta.observacoes }}</textarea>
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="{% url 'contas_pagar:detalhe' conta.id %}" class="btn btn-outline-secondary">Voltar</a>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-send me-1"></i>Salvar e Reenviar para Aprovação
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var el = document.getElementById('valor-input');
+  if(!el) return;
+  el.addEventListener('input', function(){
+    var v = el.value.replace(/\D/g, '');
+    if(v === '') { el.value = ''; return; }
+    var n = parseInt(v, 10);
+    var reais = Math.floor(n / 100);
+    var centavos = (n % 100).toString().padStart(2, '0');
+    var reaisFormatado = reais.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    el.value = reaisFormatado + ',' + centavos;
+  });
+})();
+</script>
+{% endblock %}

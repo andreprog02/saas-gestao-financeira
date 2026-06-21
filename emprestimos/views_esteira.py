@@ -54,16 +54,17 @@ CHECKLIST_PADRAO = {
         ("Votos registrados", True),
         ("Ata da reunião anexada", False),
     ],
-    "FORMALIZACAO": [
+     "FORMALIZACAO": [
         ("Contrato assinado pelo cliente", True),
-        ("Contrato assinado pela empresa", True),
-        ("Nota promissória emitida", False),
-        ("Garantias registradas", False),
+        ("Nota promissória assinada", True),
+        ("Garantias cadastradas", True),
+        ("Contrato assinado pela empresa", False),
     ],
-    "LIBERACAO": [
+      "LIBERACAO": [
         ("Valor conferido", True),
         ("Dados bancários confirmados", True),
         ("Liberação autorizada pelo gerente", True),
+        ("Checklist de formalização revisado", True),
     ],
 }
 
@@ -303,10 +304,31 @@ def detalhe_proposta(request, proposta_id):
             pendencias_docs.append(f"{ds['nome']}: desatualizado")
 
     # Votos do comitê (se estiver na etapa COMITE)
-    from .models import VotoComite
+    from .models import VotoComite, ContratoFormalizado
     votos = proposta.votos_comite.select_related("usuario").all()
     ja_votou = votos.filter(usuario=request.user).exists()
     is_comite = etapa_ativa and etapa_ativa.etapa == "COMITE"
+
+    # Contrato formalizado (se estiver na FORMALIZACAO)
+    from .models import ContratoFormalizado
+    contrato_formal = ContratoFormalizado.objects.filter(proposta=proposta).first()
+    is_formalizacao = etapa_ativa and etapa_ativa.etapa == "FORMALIZACAO"
+
+    # Checklist da formalização para exibir na liberação
+    checklist_formalizacao = []
+    if etapa_ativa and etapa_ativa.etapa == "LIBERACAO":
+        etapa_form = todas_etapas.filter(etapa="FORMALIZACAO", resultado="APROVADO").last()
+        if etapa_form:
+            checklist_formalizacao = etapa_form.checklist.all()
+
+    # Contrato formalizado (se estiver na FORMALIZACAO)
+    contrato_formal = ContratoFormalizado.objects.filter(proposta=proposta).first()
+     # Checklist da formalização para exibir na liberação
+    checklist_formalizacao = []
+    if etapa_ativa and etapa_ativa.etapa == "LIBERACAO":
+        etapa_form = todas_etapas.filter(etapa="FORMALIZACAO", resultado="APROVADO").last()
+        if etapa_form:
+            checklist_formalizacao = etapa_form.checklist.all()
 
     return render(request, "emprestimos/esteira/detalhe.html", {
         "proposta": proposta,
@@ -322,6 +344,9 @@ def detalhe_proposta(request, proposta_id):
         "votos": votos,
         "ja_votou": ja_votou,
         "is_comite": is_comite,
+        "contrato_formal": contrato_formal,
+        "is_formalizacao": is_formalizacao,
+        "checklist_formalizacao": checklist_formalizacao,
     })
 
 
@@ -554,6 +579,310 @@ def _liberar_proposta(request, proposta):
         f"e R$ {proposta.valor_solicitado:,.2f} liberado."
     )
     return redirect("emprestimos:contrato_detalhe", pk=emprestimo.id)
+
+
+# ==============================================================================
+# 5B. FORMALIZAÇÃO — Emissão de Contrato e Nota Promissória
+# ==============================================================================
+
+MESES = {
+    1: "janeiro", 2: "fevereiro", 3: "março", 4: "abril",
+    5: "maio", 6: "junho", 7: "julho", 8: "agosto",
+    9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro",
+}
+
+
+@login_required
+def emitir_contrato_pdf(request, proposta_id):
+    """Gera o contrato de empréstimo em PDF e registra a emissão."""
+    from django.http import HttpResponse
+    from num2words import num2words
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_JUSTIFY
+    from reportlab.lib import colors
+    from .models import ContratoFormalizado
+
+    proposta = get_object_or_404(PropostaEmprestimo.objects.select_related("cliente"), id=proposta_id)
+    cli = proposta.cliente
+    hoje = timezone.localdate()
+
+    # Cria ou recupera o contrato formalizado
+    contrato_f, criado = ContratoFormalizado.objects.get_or_create(
+        proposta=proposta,
+        defaults={
+            "numero": ContratoFormalizado.proximo_numero(),
+            "ano": hoje.year,
+            "numero_formatado": ContratoFormalizado.gerar_numero_formatado(
+                ContratoFormalizado.proximo_numero(), hoje.year
+            ),
+            "emitido_por": request.user,
+        }
+    )
+
+    if criado or not contrato_f.contrato_emitido:
+        contrato_f.contrato_emitido = True
+        contrato_f.contrato_emitido_em = timezone.now()
+        contrato_f.save()
+
+    # Simulação Price
+    _, parc_aplicada, total_ctr, _, parcelas_sim = simular(
+        valor_emprestado=proposta.valor_solicitado,
+        qtd_parcelas=proposta.qtd_parcelas,
+        taxa_juros_mensal=proposta.taxa_juros,
+        primeiro_vencimento=proposta.primeiro_vencimento,
+    )
+    total_juros = (total_ctr - proposta.valor_solicitado).quantize(Decimal("0.01"))
+
+    # Valor por extenso
+    val_int = int(proposta.valor_solicitado)
+    val_cents = int((proposta.valor_solicitado % 1) * 100)
+    extenso = num2words(val_int, lang="pt_BR")
+    if val_cents > 0:
+        extenso += f" reais e {num2words(val_cents, lang='pt_BR')} centavos"
+    else:
+        extenso += " reais"
+
+    fmt = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    mes_ext = MESES.get(hoje.month, "")
+    data_ext = f"{hoje.day} de {mes_ext} de {hoje.year}"
+
+    # PDF
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="contrato_{contrato_f.numero_formatado.replace("/", "_").replace(" ", "_")}.pdf"'
+
+    doc = SimpleDocTemplate(response, pagesize=A4, topMargin=20*mm, bottomMargin=20*mm, leftMargin=25*mm, rightMargin=25*mm)
+    styles = getSampleStyleSheet()
+    els = []
+
+    st_titulo = ParagraphStyle("T", parent=styles["Title"], fontSize=14, spaceAfter=4)
+    st_sub = ParagraphStyle("S", parent=styles["Normal"], fontSize=10, alignment=TA_CENTER, spaceAfter=12)
+    st_corpo = ParagraphStyle("C", parent=styles["Normal"], fontSize=10, leading=16, alignment=TA_JUSTIFY, spaceAfter=8)
+    st_negrito = ParagraphStyle("N", parent=styles["Normal"], fontSize=10, leading=16, alignment=TA_JUSTIFY, spaceAfter=8, fontName="Helvetica-Bold")
+    st_data = ParagraphStyle("D", parent=styles["Normal"], fontSize=10, alignment=TA_RIGHT, spaceBefore=20)
+    st_assina = ParagraphStyle("A", parent=styles["Normal"], fontSize=10, alignment=TA_CENTER, spaceBefore=40)
+
+    els.append(Paragraph("CONTRATO DE EMPRÉSTIMO", st_titulo))
+    els.append(Paragraph(f"Nº {contrato_f.numero_formatado}", st_sub))
+    els.append(Spacer(1, 5*mm))
+
+    endereco = f"{cli.logradouro}, {cli.numero}"
+    if cli.complemento:
+        endereco += f" - {cli.complemento}"
+    endereco += f", {cli.bairro}, {cli.cidade}/{cli.uf} - CEP: {cli.cep}"
+
+    els.append(Paragraph(
+        f"Pelo presente instrumento particular, de um lado a <b>CREDORA</b>, doravante denominada "
+        f"simplesmente CREDORA, e de outro lado <b>{cli.nome_completo}</b>, inscrito(a) no CPF sob o "
+        f"nº <b>{cli.cpf}</b>, residente e domiciliado(a) em <b>{endereco}</b>, "
+        f"doravante denominado(a) DEVEDOR(A), têm entre si justo e contratado o seguinte:",
+        st_corpo,
+    ))
+
+    # Cláusulas
+    clausulas = [
+        (
+            "CLÁUSULA PRIMEIRA — DO OBJETO",
+            f"A CREDORA concede ao(à) DEVEDOR(A) um empréstimo no valor de "
+            f"<b>{fmt(proposta.valor_solicitado)} ({extenso})</b>, que o(a) DEVEDOR(A) "
+            f"declara ter recebido nesta data, dando plena e irrevogável quitação.",
+        ),
+        (
+            "CLÁUSULA SEGUNDA — DOS JUROS E ENCARGOS",
+            f"Sobre o valor emprestado incidirão juros remuneratórios de <b>{proposta.taxa_juros}% "
+            f"ao mês</b> (tabela Price), totalizando <b>{fmt(total_juros)}</b> de juros "
+            f"e o montante final de <b>{fmt(total_ctr)}</b>.",
+        ),
+        (
+            "CLÁUSULA TERCEIRA — DO PAGAMENTO",
+            f"O(A) DEVEDOR(A) se obriga a pagar o valor total em <b>{proposta.qtd_parcelas} "
+            f"({num2words(proposta.qtd_parcelas, lang='pt_BR')}) parcelas</b> mensais, "
+            f"fixas e consecutivas, no valor de <b>{fmt(parc_aplicada)}</b> cada, "
+            f"com primeiro vencimento em <b>{proposta.primeiro_vencimento.strftime('%d/%m/%Y')}</b>.",
+        ),
+        (
+            "CLÁUSULA QUARTA — DA MORA",
+            "Em caso de atraso no pagamento de qualquer parcela, incidirá multa de <b>2% (dois por cento)</b> "
+            "sobre o valor da parcela em atraso, acrescida de juros de mora de <b>1% (um por cento) ao mês</b>, "
+            "calculados pro rata die.",
+        ),
+        (
+            "CLÁUSULA QUINTA — DO VENCIMENTO ANTECIPADO",
+            "O não pagamento de qualquer parcela em seu vencimento acarretará o vencimento antecipado "
+            "de todas as demais parcelas, tornando-se a dívida integralmente exigível, podendo a CREDORA "
+            "inscrever o nome do(a) DEVEDOR(A) nos órgãos de proteção ao crédito, protestar o título "
+            "em cartório e promover a execução judicial do débito.",
+        ),
+        (
+            "CLÁUSULA SEXTA — DO FORO",
+            "Fica eleito o foro da Comarca de <b>Rio de Janeiro/RJ</b> para dirimir quaisquer questões "
+            "oriundas deste contrato, com renúncia expressa de qualquer outro, por mais privilegiado que seja.",
+        ),
+    ]
+
+    for titulo, texto in clausulas:
+        els.append(Paragraph(titulo, st_negrito))
+        els.append(Paragraph(texto, st_corpo))
+
+    els.append(Paragraph(
+        "E, por estarem assim justos e contratados, assinam o presente instrumento em "
+        "duas vias de igual teor e forma.",
+        st_corpo,
+    ))
+
+    els.append(Paragraph(f"Rio de Janeiro, {data_ext}.", st_data))
+
+    # Assinaturas
+    els.append(Spacer(1, 15*mm))
+    assin_data = [
+        [Paragraph("_" * 35, st_assina), Paragraph("_" * 35, st_assina)],
+        [Paragraph("<b>CREDORA</b>", st_assina), Paragraph(f"<b>DEVEDOR(A)</b><br/>{cli.nome_completo}<br/>CPF: {cli.cpf}", st_assina)],
+    ]
+    assin_tab = Table(assin_data, colWidths=[80*mm, 80*mm])
+    assin_tab.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    els.append(assin_tab)
+
+    # Testemunhas
+    els.append(Spacer(1, 15*mm))
+    els.append(Paragraph("<b>Testemunhas:</b>", st_corpo))
+    test_data = [
+        [Paragraph("_" * 30, st_assina), Paragraph("_" * 30, st_assina)],
+        [Paragraph("Nome:<br/>CPF:", st_assina), Paragraph("Nome:<br/>CPF:", st_assina)],
+    ]
+    test_tab = Table(test_data, colWidths=[80*mm, 80*mm])
+    els.append(test_tab)
+
+    doc.build(els)
+    return response
+
+
+@login_required
+def emitir_promissoria_pdf(request, proposta_id):
+    """Gera a nota promissória em PDF."""
+    from django.http import HttpResponse
+    from num2words import num2words
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_JUSTIFY
+    from reportlab.lib import colors
+    from .models import ContratoFormalizado
+
+    proposta = get_object_or_404(PropostaEmprestimo.objects.select_related("cliente"), id=proposta_id)
+    cli = proposta.cliente
+    hoje = timezone.localdate()
+
+    # Recupera contrato formalizado
+    contrato_f = ContratoFormalizado.objects.filter(proposta=proposta).first()
+    if contrato_f:
+        contrato_f.promissoria_emitida = True
+        contrato_f.promissoria_emitida_em = timezone.now()
+        contrato_f.save()
+        num_contrato = contrato_f.numero_formatado
+    else:
+        num_contrato = "—"
+
+    # Simulação
+    _, parc_aplicada, total_ctr, _, _ = simular(
+        valor_emprestado=proposta.valor_solicitado,
+        qtd_parcelas=proposta.qtd_parcelas,
+        taxa_juros_mensal=proposta.taxa_juros,
+        primeiro_vencimento=proposta.primeiro_vencimento,
+    )
+
+    fmt = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    val_int = int(total_ctr)
+    val_cents = int((total_ctr % 1) * 100)
+    extenso = num2words(val_int, lang="pt_BR")
+    if val_cents > 0:
+        extenso += f" reais e {num2words(val_cents, lang='pt_BR')} centavos"
+    else:
+        extenso += " reais"
+
+    mes_ext = MESES.get(hoje.month, "")
+    data_ext = f"{hoje.day} de {mes_ext} de {hoje.year}"
+
+    # Vencimento da última parcela
+    ultima_parc = proposta.primeiro_vencimento
+    from dateutil.relativedelta import relativedelta
+    ultima_parc = proposta.primeiro_vencimento + relativedelta(months=proposta.qtd_parcelas - 1)
+
+    endereco = f"{cli.logradouro}, {cli.numero}"
+    if cli.complemento:
+        endereco += f" - {cli.complemento}"
+    endereco += f", {cli.bairro}, {cli.cidade}/{cli.uf}"
+
+    # PDF
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="promissoria_{num_contrato.replace("/", "_").replace(" ", "_")}.pdf"'
+
+    doc = SimpleDocTemplate(response, pagesize=A4, topMargin=25*mm, bottomMargin=25*mm, leftMargin=25*mm, rightMargin=25*mm)
+    styles = getSampleStyleSheet()
+    els = []
+
+    st_titulo = ParagraphStyle("T", parent=styles["Title"], fontSize=16, spaceAfter=4, fontName="Helvetica-Bold")
+    st_sub = ParagraphStyle("S", parent=styles["Normal"], fontSize=10, alignment=TA_CENTER, spaceAfter=15)
+    st_corpo = ParagraphStyle("C", parent=styles["Normal"], fontSize=11, leading=18, alignment=TA_JUSTIFY, spaceAfter=10)
+    st_campo = ParagraphStyle("F", parent=styles["Normal"], fontSize=10, leading=16, spaceAfter=4)
+    st_data = ParagraphStyle("D", parent=styles["Normal"], fontSize=10, alignment=TA_RIGHT, spaceBefore=20)
+    st_assina = ParagraphStyle("A", parent=styles["Normal"], fontSize=10, alignment=TA_CENTER, spaceBefore=30)
+
+    # Cabeçalho
+    els.append(Paragraph("NOTA PROMISSÓRIA", st_titulo))
+    els.append(Paragraph(f"Vinculada ao Contrato {num_contrato}", st_sub))
+
+    # Dados em formato de tabela
+    info = [
+        ["Nº:", f"{num_contrato}", "Vencimento:", f"{ultima_parc.strftime('%d/%m/%Y')}"],
+        ["Valor:", f"{fmt(total_ctr)}", "", ""],
+    ]
+    info_tab = Table(info, colWidths=[20*mm, 60*mm, 25*mm, 55*mm])
+    info_tab.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f0f0f0")),
+        ("BACKGROUND", (2, 0), (2, 0), colors.HexColor("#f0f0f0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    els.append(info_tab)
+    els.append(Spacer(1, 8*mm))
+
+    # Corpo
+    els.append(Paragraph(
+        f"No vencimento acima indicado, pagarei por esta única via de NOTA PROMISSÓRIA "
+        f"a quantia de <b>{fmt(total_ctr)} ({extenso})</b> ao portador desta ou à sua ordem.",
+        st_corpo,
+    ))
+
+    els.append(Paragraph(
+        f"Pagável em <b>{proposta.qtd_parcelas} ({num2words(proposta.qtd_parcelas, lang='pt_BR')}) "
+        f"parcelas mensais</b> de <b>{fmt(parc_aplicada)}</b>, a primeira com vencimento em "
+        f"<b>{proposta.primeiro_vencimento.strftime('%d/%m/%Y')}</b>.",
+        st_corpo,
+    ))
+
+    els.append(Spacer(1, 5*mm))
+
+    # Dados do emitente
+    els.append(Paragraph(f"<b>Emitente:</b> {cli.nome_completo}", st_campo))
+    els.append(Paragraph(f"<b>CPF:</b> {cli.cpf}", st_campo))
+    els.append(Paragraph(f"<b>Endereço:</b> {endereco}", st_campo))
+
+    els.append(Paragraph(f"Rio de Janeiro, {data_ext}.", st_data))
+
+    # Assinatura
+    els.append(Spacer(1, 20*mm))
+    els.append(Paragraph("_" * 40, st_assina))
+    els.append(Paragraph(f"<b>{cli.nome_completo}</b><br/>CPF: {cli.cpf}", st_assina))
+
+    doc.build(els)
+    return response
 
 
 # ==============================================================================

@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-receipt-cutoff me-2"></i>Contas a Pagar</h4>
+  <a href="{% url 'contas_pagar:cadastrar' %}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Nova Conta
+  </a>
+</div>
+
+<!-- FILTRO DE PERÍODO -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="row align-items-end g-2">
+      <div class="col-auto">
+        <div class="btn-group btn-group-sm">
+          <a href="?periodo=todos" class="btn {% if periodo == 'todos' %}btn-primary{% else %}btn-outline-primary{% endif %}">Todos</a>
+          <a href="?periodo=hoje" class="btn {% if periodo == 'hoje' %}btn-primary{% else %}btn-outline-primary{% endif %}">Hoje</a>
+          <a href="?periodo=semana" class="btn {% if periodo == 'semana' %}btn-primary{% else %}btn-outline-primary{% endif %}">Próx. 7 dias</a>
+          <a href="?periodo=mes" class="btn {% if periodo == 'mes' %}btn-primary{% else %}btn-outline-primary{% endif %}">Mês Atual</a>
+          <a href="?periodo=vencidas" class="btn {% if periodo == 'vencidas' %}btn-danger{% else %}btn-outline-danger{% endif %}">Vencidas</a>
+        </div>
+      </div>
+      <div class="col">
+        <form method="get" class="d-flex gap-2 align-items-end">
+          <input type="hidden" name="periodo" value="custom">
+          <div>
+            <label class="form-label small fw-semibold mb-0">De:</label>
+            <input type="date" name="data_inicio" class="form-control form-control-sm" value="{{ data_inicio }}">
+          </div>
+          <div>
+            <label class="form-label small fw-semibold mb-0">Até:</label>
+            <input type="date" name="data_fim" class="form-control form-control-sm" value="{{ data_fim }}">
+          </div>
+          <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search"></i></button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- RESUMO -->
+<div class="row g-3 mb-3">
+  <div class="col">
+    <div class="card border-warning shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Pendentes</small>
+        <span class="fw-bold text-warning fs-5">R$ {{ total_pendente|floatformat:2 }}</span>
+        <span class="badge bg-warning text-dark ms-1">{{ pendentes.count }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-info shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Aprovadas</small>
+        <span class="fw-bold text-info fs-5">R$ {{ total_aprovado|floatformat:2 }}</span>
+        <span class="badge bg-info ms-1">{{ aprovadas.count }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-success shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Pagas</small>
+        <span class="fw-bold text-success fs-5">R$ {{ total_pago|floatformat:2 }}</span>
+        <span class="badge bg-success ms-1">{{ pagas.count }}</span>
+      </div>
+    </div>
+  </div>
+  {% if qtd_vencidas > 0 %}
+  <div class="col">
+    <div class="card border-danger bg-danger bg-opacity-10 shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block"><i class="bi bi-alarm me-1"></i>Vencidas</small>
+        <span class="fw-bold text-danger fs-5">R$ {{ total_vencidas|floatformat:2 }}</span>
+        <span class="badge bg-danger ms-1">{{ qtd_vencidas }}</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- PENDENTES DE APROVAÇÃO -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header py-2 bg-warning bg-opacity-25">
+    <strong><i class="bi bi-hourglass-split me-1"></i>Pendentes de Aprovação</strong>
+    <span class="badge bg-warning text-dark ms-1">{{ pendentes.count }}</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>Descrição</th><th>Tipo</th><th class="text-end">Valor</th><th>Vencimento</th><th>Status</th><th class="text-end">Ação</th></tr>
+      </thead>
+      <tbody>
+        {% for c in pendentes %}
+        <tr class="{% if c.vencida %}table-danger{% endif %}">
+          <td class="fw-semibold small">{{ c.descricao }}</td>
+          <td><span class="badge bg-secondary">{{ c.get_tipo_despesa_display }}</span></td>
+          <td class="text-end fw-bold">R$ {{ c.valor|floatformat:2 }}</td>
+          <td class="small">
+            {{ c.vencimento|date:"d/m/Y" }}
+            {% if c.vencida %}<span class="badge bg-danger ms-1">Vencida</span>{% endif %}
+          </td>
+          <td><span class="badge bg-{{ c.status_cor }}">{{ c.get_status_display }}</span></td>
+          <td class="text-end">
+            <a href="{% url 'contas_pagar:detalhe' c.id %}" class="btn btn-sm btn-outline-primary py-0">
+              <i class="bi bi-eye me-1"></i>Analisar
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-3">Nenhuma conta pendente.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- APROVADAS PARA PAGAMENTO -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header py-2 bg-info bg-opacity-25">
+    <strong><i class="bi bi-check2-circle me-1"></i>Aprovadas para Pagamento</strong>
+    <span class="badge bg-info ms-1">{{ aprovadas.count }}</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>Descrição</th><th>Tipo</th><th class="text-end">Valor</th><th>Vencimento</th><th>Aprovado por</th><th class="text-end">Ação</th></tr>
+      </thead>
+      <tbody>
+        {% for c in aprovadas %}
+        <tr class="{% if c.vencida %}table-danger{% endif %}">
+          <td class="fw-semibold small">{{ c.descricao }}</td>
+          <td><span class="badge bg-secondary">{{ c.get_tipo_despesa_display }}</span></td>
+          <td class="text-end fw-bold">R$ {{ c.valor|floatformat:2 }}</td>
+          <td class="small">
+            {{ c.vencimento|date:"d/m/Y" }}
+            {% if c.vencida %}<span class="badge bg-danger ms-1">Vencida</span>{% endif %}
+          </td>
+          <td class="small text-muted">{{ c.aprovado_por.get_full_name|default:c.aprovado_por.username }}</td>
+          <td class="text-end">
+            <a href="{% url 'contas_pagar:detalhe' c.id %}" class="btn btn-sm btn-outline-success py-0">
+              <i class="bi bi-cash-stack me-1"></i>Pagar
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-3">Nenhuma conta aprovada aguardando pagamento.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- PAGAS -->
+{% if pagas %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header py-2 bg-success bg-opacity-25">
+    <strong><i class="bi bi-check-circle-fill me-1"></i>Pagas</strong>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>Descrição</th><th>Tipo</th><th class="text-end">Valor</th><th>Pago em</th><th>Aprovado por</th><th>Pago por</th><th class="text-end">Ação</th></tr>
+      </thead>
+      <tbody>
+        {% for c in pagas %}
+        <tr>
+          <td class="small">{{ c.descricao }}</td>
+          <td><span class="badge bg-secondary">{{ c.get_tipo_despesa_display }}</span></td>
+          <td class="text-end fw-bold">R$ {{ c.valor|floatformat:2 }}</td>
+          <td class="small">{{ c.pago_em|date:"d/m/Y H:i" }}</td>
+          <td class="small text-muted">{{ c.aprovado_por.get_full_name|default:"-" }}</td>
+          <td class="small text-muted">{{ c.pago_por.get_full_name|default:"-" }}</td>
+          <td class="text-end">
+            <a href="{% url 'contas_pagar:detalhe' c.id %}" class="btn btn-sm btn-outline-secondary py-0">
+              <i class="bi bi-eye"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- NEGADAS / DEVOLVIDAS -->
+{% if negadas %}
+<div class="card shadow-sm">
+  <div class="card-header py-2">
+    <strong><i class="bi bi-x-circle me-1"></i>Negadas / Devolvidas</strong>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>Descrição</th><th class="text-end">Valor</th><th>Status</th><th>Justificativa</th><th class="text-end">Ação</th></tr>
+      </thead>
+      <tbody>
+        {% for c in negadas %}
+        <tr>
+          <td class="small">{{ c.descricao }}</td>
+          <td class="text-end">R$ {{ c.valor|floatformat:2 }}</td>
+          <td><span class="badge bg-{{ c.status_cor }}">{{ c.get_status_display }}</span></td>
+          <td class="small text-muted">{{ c.justificativa|truncatechars:50 }}</td>
+          <td class="text-end">
+            <a href="{% url 'contas_pagar:reenviar' c.id %}" class="btn btn-sm btn-outline-warning py-0">
+              <i class="bi bi-arrow-repeat me-1"></i>Corrigir
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

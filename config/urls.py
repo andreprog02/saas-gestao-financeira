@@ -14,6 +14,7 @@ urlpatterns = [
     path("contas/", include("contas.urls")),
     path("financeiro/", include("financeiro.urls")),
     path("conciliacao/", include("conciliacao.urls")),
+    path("contas-pagar/", include("contas_pagar.urls")),
 ]
 
 # Servir media em desenvolvimento

@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-10">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="mb-0"><i class="bi bi-receipt me-2"></i>{{ conta.descricao }}</h4>
+      <a href="{% url 'contas_pagar:painel' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Voltar
+      </a>
+    </div>
+
+    <div class="row g-3">
+
+      <!-- COLUNA ESQUERDA: dados + fatura -->
+      <div class="col-lg-6">
+
+        <!-- DADOS -->
+        <div class="card shadow-sm mb-3">
+          <div class="card-header py-2 d-flex justify-content-between">
+            <strong>Dados da Conta</strong>
+            <span class="badge bg-{{ conta.status_cor }} fs-6">{{ conta.get_status_display }}</span>
+          </div>
+          <div class="card-body">
+            <div class="row small mb-2">
+              <div class="col-6">
+                <span class="text-muted">Tipo:</span><br>
+                <strong>{{ conta.get_tipo_despesa_display }}</strong>
+              </div>
+              <div class="col-6">
+                <span class="text-muted">Valor:</span><br>
+                <strong class="text-primary fs-5">R$ {{ conta.valor|floatformat:2 }}</strong>
+              </div>
+            </div>
+            <div class="row small mb-2">
+              <div class="col-6">
+                <span class="text-muted">Vencimento:</span><br>
+                <strong>{{ conta.vencimento|date:"d/m/Y" }}</strong>
+                {% if conta.vencida %}
+                  <span class="badge bg-danger ms-1">Vencida há {{ conta.dias_ate_vencimento|cut:"-" }} dias</span>
+                {% elif conta.dias_ate_vencimento <= 3 %}
+                  <span class="badge bg-warning text-dark ms-1">Vence em {{ conta.dias_ate_vencimento }} dia{{ conta.dias_ate_vencimento|pluralize:"s" }}</span>
+                {% endif %}
+              </div>
+              <div class="col-6">
+                <span class="text-muted">Cadastrado por:</span><br>
+                <strong>{{ conta.cadastrado_por.get_full_name|default:conta.cadastrado_por.username }}</strong>
+                <br><small class="text-muted">{{ conta.cadastrado_em|date:"d/m/Y H:i" }}</small>
+              </div>
+            </div>
+
+            {% if conta.aprovado_por %}
+            <div class="row small mb-2">
+              <div class="col-6">
+                <span class="text-muted">Aprovado por:</span><br>
+                <strong class="text-success">{{ conta.aprovado_por.get_full_name|default:conta.aprovado_por.username }}</strong>
+                <br><small class="text-muted">{{ conta.aprovado_em|date:"d/m/Y H:i" }}</small>
+              </div>
+              {% if conta.pago_por %}
+              <div class="col-6">
+                <span class="text-muted">Pago por:</span><br>
+                <strong class="text-success">{{ conta.pago_por.get_full_name|default:conta.pago_por.username }}</strong>
+                <br><small class="text-muted">{{ conta.pago_em|date:"d/m/Y H:i" }}</small>
+              </div>
+              {% endif %}
+            </div>
+            {% endif %}
+
+            {% if conta.observacoes %}
+            <div class="small mt-2">
+              <span class="text-muted">Observações:</span><br>{{ conta.observacoes }}
+            </div>
+            {% endif %}
+
+            {% if conta.justificativa %}
+            <div class="alert alert-danger py-2 mt-2 small">
+              <strong>Justificativa:</strong> {{ conta.justificativa }}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- FATURA -->
+        {% if conta.fatura %}
+        <div class="card shadow-sm mb-3">
+          <div class="card-header py-2"><strong><i class="bi bi-file-earmark-pdf me-1"></i>Fatura / Boleto</strong></div>
+          <div class="card-body text-center">
+            {% if conta.fatura.name|lower|truncatechars:4 == ".pdf" or conta.fatura.name|lower|slice:"-4:" == ".pdf" %}
+              <iframe src="{{ conta.fatura.url }}" width="100%" height="500" class="border rounded"></iframe>
+            {% else %}
+              <img src="{{ conta.fatura.url }}" class="img-fluid rounded shadow-sm" alt="Fatura" style="max-height: 500px;">
+            {% endif %}
+            <div class="mt-2">
+              <a href="{{ conta.fatura.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-download me-1"></i>Abrir em nova aba
+              </a>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- COMPROVANTE -->
+        {% if conta.comprovante %}
+        <div class="card shadow-sm mb-3">
+          <div class="card-header py-2 bg-success bg-opacity-25">
+            <strong><i class="bi bi-patch-check me-1"></i>Comprovante de Pagamento</strong>
+          </div>
+          <div class="card-body text-center">
+            {% if conta.comprovante.name|lower|slice:"-4:" == ".pdf" %}
+              <iframe src="{{ conta.comprovante.url }}" width="100%" height="400" class="border rounded"></iframe>
+            {% else %}
+              <img src="{{ conta.comprovante.url }}" class="img-fluid rounded shadow-sm" alt="Comprovante" style="max-height: 400px;">
+            {% endif %}
+            <div class="mt-2">
+              <a href="{{ conta.comprovante.url }}" target="_blank" class="btn btn-sm btn-outline-success">
+                <i class="bi bi-download me-1"></i>Abrir comprovante
+              </a>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- COLUNA DIREITA: ações -->
+      <div class="col-lg-6">
+
+        <!-- AÇÃO: PENDENTE → Aprovar/Negar/Devolver -->
+        {% if conta.status == 'PENDENTE' %}
+        <div class="card shadow-sm mb-3 border-warning">
+          <div class="card-header py-2 bg-warning bg-opacity-25">
+            <strong><i class="bi bi-shield-check me-1"></i>Autorização de Pagamento</strong>
+          </div>
+          <div class="card-body">
+
+            <!-- APROVAR -->
+            <form method="post" action="{% url 'contas_pagar:aprovar' conta.id %}" class="mb-3">
+              {% csrf_token %}
+              <label class="form-label small fw-semibold">Sua senha (para validar)</label>
+              <input type="password" name="senha" class="form-control form-control-sm mb-2"
+                     required placeholder="Digite sua senha">
+              <button type="submit" class="btn btn-success w-100">
+                <i class="bi bi-check-circle me-1"></i>Autorizar Pagamento
+              </button>
+            </form>
+
+            <hr>
+
+            <!-- NEGAR -->
+            <button type="button" class="btn btn-danger btn-sm w-100 mb-2" data-bs-toggle="modal" data-bs-target="#modalNegar">
+              <i class="bi bi-x-circle me-1"></i>Negar Pagamento
+            </button>
+
+            <!-- DEVOLVER -->
+            <button type="button" class="btn btn-outline-secondary btn-sm w-100" data-bs-toggle="modal" data-bs-target="#modalDevolver">
+              <i class="bi bi-arrow-return-left me-1"></i>Devolver para Correção
+            </button>
+          </div>
+        </div>
+
+        <!-- Modal Negar -->
+        <div class="modal fade" id="modalNegar" tabindex="-1">
+          <div class="modal-dialog">
+            <form method="post" action="{% url 'contas_pagar:negar' conta.id %}">
+              {% csrf_token %}
+              <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                  <h5 class="modal-title">Negar Pagamento</h5>
+                  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <label class="form-label fw-semibold">Justificativa</label>
+                  <textarea name="justificativa" class="form-control" rows="3" required
+                            placeholder="Informe o motivo da negativa..."></textarea>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                  <button type="submit" class="btn btn-danger">Confirmar Negativa</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Modal Devolver -->
+        <div class="modal fade" id="modalDevolver" tabindex="-1">
+          <div class="modal-dialog">
+            <form method="post" action="{% url 'contas_pagar:devolver' conta.id %}">
+              {% csrf_token %}
+              <div class="modal-content">
+                <div class="modal-header bg-secondary text-white">
+                  <h5 class="modal-title">Devolver para Correção</h5>
+                  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <label class="form-label fw-semibold">O que precisa ser corrigido?</label>
+                  <textarea name="justificativa" class="form-control" rows="3"
+                            placeholder="Descreva o erro..."></textarea>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                  <button type="submit" class="btn btn-warning">Devolver</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- AÇÃO: APROVADA → Confirmar Pagamento -->
+        {% if conta.status == 'APROVADA' %}
+        <div class="card shadow-sm mb-3 border-success">
+          <div class="card-header py-2 bg-success bg-opacity-25">
+            <strong><i class="bi bi-cash-stack me-1"></i>Confirmar Pagamento</strong>
+          </div>
+          <div class="card-body">
+            <form method="post" action="{% url 'contas_pagar:confirmar_pagamento' conta.id %}" enctype="multipart/form-data">
+              {% csrf_token %}
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Comprovante de Pagamento (opcional)</label>
+                <input type="file" name="comprovante" class="form-control"
+                       accept=".pdf,.jpg,.jpeg,.png">
+                <div class="form-text">Faça upload do comprovante se disponível.</div>
+              </div>
+              <button type="submit" class="btn btn-success w-100"
+                      onclick="return confirm('Confirmar que esta conta foi paga?')">
+                <i class="bi bi-check2-all me-1"></i>Confirmar Pagamento Realizado
+              </button>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- AÇÃO: DEVOLVIDA/NEGADA → Reenviar -->
+        {% if conta.status == 'DEVOLVIDA' or conta.status == 'NEGADA' %}
+        <div class="card shadow-sm mb-3">
+          <div class="card-body text-center">
+            <a href="{% url 'contas_pagar:reenviar' conta.id %}" class="btn btn-warning">
+              <i class="bi bi-arrow-repeat me-1"></i>Corrigir e Reenviar
+            </a>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- AÇÃO: PAGA → Apenas visualização -->
+        {% if conta.status == 'PAGA' %}
+        <div class="card shadow-sm mb-3 border-success">
+          <div class="card-body text-center">
+            <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+            <p class="mt-2 mb-0 fw-bold text-success">Conta paga</p>
+            <p class="small text-muted">
+              Pago por {{ conta.pago_por.get_full_name|default:conta.pago_por.username }}
+              em {{ conta.pago_em|date:"d/m/Y H:i" }}
+            </p>
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

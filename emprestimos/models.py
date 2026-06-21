@@ -545,3 +545,48 @@ class VotoComite(models.Model):
 
     def __str__(self):
         return f"Voto {self.get_decisao_display()} — {self.usuario} — Prop. {self.proposta_id}"
+
+
+class ContratoFormalizado(models.Model):
+    """Controle de emissão de contrato e nota promissória na formalização."""
+
+    proposta = models.OneToOneField(
+        PropostaEmprestimo, on_delete=models.CASCADE, related_name="contrato_formal"
+    )
+    numero = models.IntegerField("Número Sequencial")
+    ano = models.IntegerField("Ano")
+    numero_formatado = models.CharField("Nº Contrato", max_length=20, unique=True)
+
+    contrato_emitido = models.BooleanField("Contrato Emitido", default=False)
+    contrato_emitido_em = models.DateTimeField(null=True, blank=True)
+
+    promissoria_emitida = models.BooleanField("Nota Promissória Emitida", default=False)
+    promissoria_emitida_em = models.DateTimeField(null=True, blank=True)
+
+    assinado_cliente = models.BooleanField("Assinado pelo Cliente", default=False)
+    assinado_empresa = models.BooleanField("Assinado pela Empresa", default=False)
+
+    emitido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ano", "-numero"]
+        verbose_name = "Contrato Formalizado"
+        verbose_name_plural = "Contratos Formalizados"
+
+    def __str__(self):
+        return f"Contrato {self.numero_formatado} — Proposta #{self.proposta_id}"
+
+    @classmethod
+    def proximo_numero(cls, ano=None):
+        if ano is None:
+            ano = timezone.localdate().year
+        ultimo = cls.objects.filter(ano=ano).order_by("-numero").first()
+        return (ultimo.numero + 1) if ultimo else 1
+
+    @classmethod
+    def gerar_numero_formatado(cls, numero, ano):
+        return f"{numero:03d}/{ano} EMP"
