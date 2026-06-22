@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-10">
+  <div class="col-lg-11">
     <div class="card shadow-sm">
       <div class="card-header bg-primary text-white">
         <h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Nova Proposta de Crédito</h5>
@@ -24,12 +24,14 @@
           {% csrf_token %}
 
           <div class="row">
-            <!-- COLUNA ESQUERDA: formulário -->
+            <!-- COLUNA ESQUERDA -->
             <div class="col-lg-6">
+
+              <h6 class="fw-bold text-muted mb-2"><i class="bi bi-person me-1"></i>Dados da Proposta</h6>
 
               <div class="mb-3">
                 <label class="form-label fw-semibold">Cliente</label>
-                <select name="cliente_id" class="form-select select2" required>
+                <select name="cliente_id" id="cliente-select" class="form-select select2" required>
                   <option value="">Selecione...</option>
                   {% for c in clientes %}
                     <option value="{{ c.id }}">{{ c.nome_completo }} ({{ c.cpf }})</option>
@@ -39,9 +41,9 @@
 
               <div class="row mb-3">
                 <div class="col-6">
-                  <label class="form-label fw-semibold">Valor Solicitado</label>
-                  <input type="text" name="valor" id="sim-valor" class="form-control money-mask"
-                         placeholder="R$ 0,00" required>
+                  <label class="form-label fw-semibold">Valor Solicitado (R$)</label>
+                  <input type="text" name="valor" id="sim-valor" class="form-control"
+                         placeholder="0,00" required inputmode="decimal">
                 </div>
                 <div class="col-6">
                   <label class="form-label fw-semibold">Taxa de Juros (% a.m.)</label>
@@ -62,6 +64,33 @@
                 </div>
               </div>
 
+              <!-- MULTA E MORA -->
+              <div class="card bg-light mb-3">
+                <div class="card-body py-2">
+                  <h6 class="fw-bold text-muted small mb-2">Multa e Juros de Mora</h6>
+                  <div class="row g-2">
+                    <div class="col-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="tem_multa" id="ck-multa" checked>
+                        <label class="form-check-label small" for="ck-multa">Multa por atraso</label>
+                      </div>
+                      <input type="number" name="multa_percent" class="form-control form-control-sm mt-1"
+                             value="2.00" step="0.01" min="0" max="20" style="width:100px;">
+                      <small class="text-muted">% sobre parcela</small>
+                    </div>
+                    <div class="col-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="tem_juros_mora" id="ck-mora" checked>
+                        <label class="form-check-label small" for="ck-mora">Juros de mora</label>
+                      </div>
+                      <input type="number" name="juros_mora_percent" class="form-control form-control-sm mt-1"
+                             value="2.00" step="0.01" min="0" max="20" style="width:100px;">
+                      <small class="text-muted">% a.m. pro rata die</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="mb-3">
                 <label class="form-label fw-semibold">Observações</label>
                 <textarea name="observacoes" class="form-control" rows="2"
@@ -71,71 +100,155 @@
               <button type="button" id="btn-simular" class="btn btn-outline-primary w-100 mb-3">
                 <i class="bi bi-calculator me-1"></i>Simular Empréstimo
               </button>
-
             </div>
 
-            <!-- COLUNA DIREITA: resultado da simulação -->
+            <!-- COLUNA DIREITA -->
             <div class="col-lg-6">
-              <!-- Placeholder antes da simulação -->
-              <div id="sim-placeholder" class="text-center text-muted py-5">
-                <i class="bi bi-calculator" style="font-size: 3rem;"></i>
-                <p class="mt-2">Preencha os dados e clique em <strong>Simular</strong><br>para ver os valores calculados.</p>
+
+              <!-- SIMULAÇÃO -->
+              <div id="sim-placeholder" class="text-center text-muted py-4">
+                <i class="bi bi-calculator" style="font-size: 2.5rem;"></i>
+                <p class="mt-2">Preencha e clique em <strong>Simular</strong></p>
               </div>
 
-              <!-- Resultado da simulação (escondido inicialmente) -->
               <div id="sim-resultado" style="display: none;">
-
-                <!-- Resumo -->
                 <div class="card bg-light mb-3">
                   <div class="card-body py-2">
-                    <h6 class="card-title mb-3"><i class="bi bi-bar-chart me-1"></i>Resumo da Simulação</h6>
+                    <h6 class="card-title mb-2"><i class="bi bi-bar-chart me-1"></i>Simulação</h6>
                     <div class="row text-center">
                       <div class="col-6 mb-2">
-                        <small class="text-muted d-block">Valor da Parcela</small>
+                        <small class="text-muted d-block">Parcela</small>
                         <span class="fs-4 fw-bold text-primary" id="res-parcela">—</span>
                       </div>
                       <div class="col-6 mb-2">
-                        <small class="text-muted d-block">Total do Contrato</small>
+                        <small class="text-muted d-block">Total</small>
                         <span class="fs-4 fw-bold text-dark" id="res-total">—</span>
                       </div>
                       <div class="col-4">
-                        <small class="text-muted d-block">Juros Total</small>
+                        <small class="text-muted d-block">Juros</small>
                         <span class="fw-semibold text-danger" id="res-juros">—</span>
                       </div>
                       <div class="col-4">
-                        <small class="text-muted d-block">Parcela Bruta</small>
+                        <small class="text-muted d-block">Bruta</small>
                         <span class="fw-semibold text-secondary" id="res-bruta">—</span>
                       </div>
                       <div class="col-4">
-                        <small class="text-muted d-block">Arredondamento</small>
+                        <small class="text-muted d-block">Ajuste</small>
                         <span class="fw-semibold text-secondary" id="res-ajuste">—</span>
                       </div>
                     </div>
                   </div>
                 </div>
-
-                <!-- Tabela de parcelas -->
-                <div class="card">
-                  <div class="card-header py-2">
-                    <strong><i class="bi bi-list-ol me-1"></i>Parcelas</strong>
-                  </div>
-                  <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+                <div class="card mb-3">
+                  <div class="card-header py-1"><strong class="small">Parcelas</strong></div>
+                  <div class="card-body p-0" style="max-height: 200px; overflow-y: auto;">
                     <table class="table table-sm table-striped mb-0">
                       <thead class="table-light sticky-top">
-                        <tr>
-                          <th class="text-center">#</th>
-                          <th>Vencimento</th>
-                          <th class="text-end">Valor</th>
-                        </tr>
+                        <tr><th class="text-center">#</th><th>Vencimento</th><th class="text-end">Valor</th></tr>
                       </thead>
-                      <tbody id="res-parcelas-tbody">
-                      </tbody>
+                      <tbody id="res-parcelas-tbody"></tbody>
                     </table>
                   </div>
                 </div>
+              </div>
 
-                <!-- Botão de enviar -->
-                <button type="submit" class="btn btn-success w-100 mt-3">
+              <!-- GARANTIAS -->
+              <div class="card mb-3">
+                <div class="card-header py-2 bg-dark text-white">
+                  <strong><i class="bi bi-shield-check me-1"></i>Garantias</strong>
+                </div>
+                <div class="card-body">
+
+                  <!-- CHEQUE -->
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold"><i class="bi bi-card-text me-1"></i>Cheque como garantia?</label>
+                    <div class="d-flex gap-3">
+                      <div class="form-check">
+                        <input class="form-check-input" type="radio" name="tem_cheque" value="sim" id="cheque-sim">
+                        <label class="form-check-label small" for="cheque-sim">Sim</label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="radio" name="tem_cheque" value="nao" id="cheque-nao" checked>
+                        <label class="form-check-label small" for="cheque-nao">Não</label>
+                      </div>
+                    </div>
+                    <div id="cheque-campos" style="display:none;" class="mt-2">
+                      <div class="row g-1">
+                        <div class="col-4">
+                          <input type="text" name="cheque_banco" class="form-control form-control-sm" placeholder="Banco">
+                        </div>
+                        <div class="col-4">
+                          <input type="text" name="cheque_numero" class="form-control form-control-sm" placeholder="Nº Cheque">
+                        </div>
+                        <div class="col-4">
+                          <input type="text" name="cheque_valor" class="form-control form-control-sm" placeholder="Valor">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- AVALISTA -->
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold"><i class="bi bi-person-plus me-1"></i>Avalista(s)</label>
+                    <div id="avalistas-lista"></div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-1" data-bs-toggle="modal" data-bs-target="#modalAvalista">
+                      <i class="bi bi-plus-lg me-1"></i>Adicionar Avalista
+                    </button>
+                  </div>
+
+                  <!-- BENS MÓVEIS DO CLIENTE -->
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold"><i class="bi bi-truck me-1"></i>Bens Móveis do Cliente</label>
+                    <div id="bens-moveis-container">
+                      <p class="text-muted small" id="bens-moveis-placeholder">Selecione um cliente para carregar os bens.</p>
+                    </div>
+                  </div>
+
+                  <!-- BENS IMÓVEIS DO CLIENTE -->
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold"><i class="bi bi-house-door me-1"></i>Bens Imóveis do Cliente</label>
+                    <div id="bens-imoveis-container">
+                      <p class="text-muted small" id="bens-imoveis-placeholder">Selecione um cliente para carregar os imóveis.</p>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- MODAL AVALISTA -->
+              <div class="modal fade" id="modalAvalista" tabindex="-1">
+                <div class="modal-dialog">
+                  <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                      <h5 class="modal-title"><i class="bi bi-person-plus me-1"></i>Selecionar Avalista</h5>
+                      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                      <input type="text" id="busca-avalista" class="form-control form-control-sm mb-2"
+                             placeholder="Buscar por nome ou CPF...">
+                      <div id="lista-avalistas" style="max-height: 300px; overflow-y: auto;">
+                        {% for c in clientes %}
+                        <div class="avalista-item d-flex justify-content-between align-items-center p-2 border-bottom"
+                             data-nome="{{ c.nome_completo|lower }}" data-cpf="{{ c.cpf }}">
+                          <div>
+                            <strong class="small">{{ c.nome_completo }}</strong>
+                            <br><span class="text-muted small">{{ c.cpf }}</span>
+                          </div>
+                          <button type="button" class="btn btn-sm btn-success btn-add-avalista"
+                                  data-id="{{ c.id }}" data-nome="{{ c.nome_completo }}" data-cpf="{{ c.cpf }}">
+                            <i class="bi bi-plus-lg"></i>
+                          </button>
+                        </div>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BOTÃO ENVIAR -->
+              <div id="btn-enviar-container" style="display:none;">
+                <button type="submit" class="btn btn-success w-100">
                   <i class="bi bi-send me-1"></i>Enviar para Esteira de Aprovação
                 </button>
               </div>
@@ -156,10 +269,115 @@
 <script>
 $(document).ready(function() {
 
-  function formatarDinheiro(valor) {
-    return parseFloat(valor).toLocaleString('pt-BR', {
-      style: 'currency', currency: 'BRL'
+  /* === MÁSCARA BRL === */
+  (function(){
+    var el = document.getElementById('sim-valor');
+    if(!el) return;
+    el.addEventListener('input', function(){
+      var v = el.value.replace(/\D/g, '');
+      if(v === '') { el.value = ''; return; }
+      var num = parseInt(v, 10);
+      var reais = (num / 100).toFixed(2);
+      var parts = reais.split('.');
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      el.value = parts.join(',');
     });
+    el.addEventListener('keypress', function(e){
+      if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault();
+    });
+  })();
+
+  /* === CHEQUE RADIO TOGGLE === */
+  $('input[name="tem_cheque"]').on('change', function(){
+    $('#cheque-campos').toggle($(this).val() === 'sim');
+  });
+
+  /* === AVALISTA MODAL === */
+  // Busca
+  $('#busca-avalista').on('input', function(){
+    var q = $(this).val().toLowerCase();
+    $('.avalista-item').each(function(){
+      var nome = $(this).data('nome');
+      var cpf = $(this).data('cpf');
+      $(this).toggle(nome.indexOf(q) >= 0 || cpf.indexOf(q) >= 0);
+    });
+  });
+
+  // Adicionar avalista
+  $(document).on('click', '.btn-add-avalista', function(){
+    var id = $(this).data('id');
+    var nome = $(this).data('nome');
+    var cpf = $(this).data('cpf');
+
+    // Verifica se já foi adicionado
+    if($('#av-' + id).length > 0) return;
+
+    $('#avalistas-lista').append(
+      '<div class="d-flex align-items-center gap-2 mb-1 p-1 bg-light rounded" id="av-' + id + '">' +
+      '<input type="hidden" name="avalista_ids" value="' + id + '">' +
+      '<i class="bi bi-person-check text-success"></i>' +
+      '<span class="small fw-semibold">' + nome + '</span>' +
+      '<span class="text-muted small">(' + cpf + ')</span>' +
+      '<button type="button" class="btn btn-sm btn-outline-danger py-0 ms-auto btn-remove-av">' +
+      '<i class="bi bi-x"></i></button></div>'
+    );
+
+    // Fecha modal
+    var modal = bootstrap.Modal.getInstance(document.getElementById('modalAvalista'));
+    if(modal) modal.hide();
+  });
+
+  // Remover avalista
+  $(document).on('click', '.btn-remove-av', function(){
+    $(this).closest('div').remove();
+  });
+
+  /* === CARREGAR BENS DO CLIENTE === */
+  $('#cliente-select').on('change', function(){
+    var cid = $(this).val();
+    if(!cid) return;
+
+    $.getJSON("{% url 'emprestimos:esteira_bens_cliente' %}", {cliente_id: cid}, function(data){
+      // Bens móveis
+      var mc = $('#bens-moveis-container');
+      mc.empty();
+      if(data.moveis.length > 0){
+        data.moveis.forEach(function(m){
+          mc.append(
+            '<div class="form-check">' +
+            '<input class="form-check-input" type="checkbox" name="bem_movel_ids" value="'+m.id+'" id="bm'+m.id+'">' +
+            '<label class="form-check-label small" for="bm'+m.id+'">' +
+            m.tipo_display + ' — ' + (m.descricao||'') + (m.placa ? ' ('+m.placa+')' : '') +
+            '</label></div>'
+          );
+        });
+      } else {
+        mc.html('<p class="text-muted small">Nenhum bem móvel cadastrado.</p>');
+      }
+
+      // Bens imóveis
+      var ic = $('#bens-imoveis-container');
+      ic.empty();
+      if(data.imoveis.length > 0){
+        data.imoveis.forEach(function(i){
+          var end = [i.logradouro, i.numero, i.bairro, i.cidade].filter(Boolean).join(', ');
+          ic.append(
+            '<div class="form-check">' +
+            '<input class="form-check-input" type="checkbox" name="bem_imovel_ids" value="'+i.id+'" id="bi'+i.id+'">' +
+            '<label class="form-check-label small" for="bi'+i.id+'">' +
+            i.tipo_display + ' — ' + (i.descricao||end) + (i.matricula ? ' (Mat: '+i.matricula+')' : '') +
+            '</label></div>'
+          );
+        });
+      } else {
+        ic.html('<p class="text-muted small">Nenhum bem imóvel cadastrado.</p>');
+      }
+    });
+  });
+
+  /* === SIMULAÇÃO === */
+  function formatarDinheiro(valor) {
+    return parseFloat(valor).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
   }
 
   $('#btn-simular').on('click', function() {
@@ -180,33 +398,23 @@ $(document).ready(function() {
       url: "{% url 'emprestimos:esteira_simular' %}",
       data: { valor: valor, taxa: taxa, qtd: qtd, vencimento: vencimento },
       success: function(data) {
-        // Preenche resumo
         $('#res-parcela').text(formatarDinheiro(data.parcela_aplicada));
         $('#res-total').text(formatarDinheiro(data.total_contrato));
         $('#res-juros').text(formatarDinheiro(data.total_juros));
         $('#res-bruta').text(formatarDinheiro(data.parcela_bruta));
         $('#res-ajuste').text(formatarDinheiro(data.ajuste));
 
-        // Preenche tabela de parcelas
-        var tbody = $('#res-parcelas-tbody');
-        tbody.empty();
+        var tbody = $('#res-parcelas-tbody').empty();
         data.parcelas.forEach(function(p) {
-          tbody.append(
-            '<tr>' +
-            '<td class="text-center">' + p.numero + '</td>' +
-            '<td>' + p.vencimento + '</td>' +
-            '<td class="text-end fw-semibold">' + formatarDinheiro(p.valor) + '</td>' +
-            '</tr>'
-          );
+          tbody.append('<tr><td class="text-center">'+p.numero+'</td><td>'+p.vencimento+'</td><td class="text-end fw-semibold">'+formatarDinheiro(p.valor)+'</td></tr>');
         });
 
-        // Mostra resultado, esconde placeholder
         $('#sim-placeholder').hide();
         $('#sim-resultado').show();
+        $('#btn-enviar-container').show();
       },
       error: function(xhr) {
-        var msg = xhr.responseJSON ? xhr.responseJSON.erro : 'Erro ao simular.';
-        alert(msg);
+        alert(xhr.responseJSON ? xhr.responseJSON.erro : 'Erro ao simular.');
       },
       complete: function() {
         btn.prop('disabled', false).html('<i class="bi bi-calculator me-1"></i>Simular Empréstimo');

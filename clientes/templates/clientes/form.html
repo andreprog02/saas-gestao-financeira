@@ -1,12 +1,14 @@
+
+Form · HTML
 {% extends "base.html" %}
 {% load static %}
-
+ 
 {% block content %}
 <h3 class="mb-3">{{ titulo }}</h3>
-
+ 
 <form method="post" class="card p-4">
   {% csrf_token %}
-
+ 
   {# === DADOS PESSOAIS === #}
   <div class="row g-3">
     <div class="col-md-6">
@@ -16,76 +18,91 @@
         <div class="text-danger small">{{ form.nome_completo.errors }}</div>
       {% endif %}
     </div>
-
+ 
     <div class="col-md-3">
       <label class="form-label">Telefone</label>
       {{ form.telefone }}
     </div>
-
+ 
     <div class="col-md-3">
       <label class="form-label">CPF</label>
       {{ form.cpf }}
     </div>
-
+ 
     <div class="col-md-3">
       <label class="form-label">Documento</label>
       {{ form.doc }}
     </div>
-
+ 
     <div class="col-md-3">
       <label class="form-label">Data de nascimento</label>
       {{ form.data_nascimento }}
       <small class="text-muted">Formato: dd/mm/aaaa</small>
     </div>
-
+ 
+    <div class="col-md-3">
+      <label class="form-label">Profissão</label>
+      {{ form.profissao }}
+    </div>
+ 
+    <div class="col-md-3">
+      <label class="form-label">Renda Mensal (R$)</label>
+      {{ form.renda_mensal }}
+    </div>
+ 
+    <div class="col-md-3">
+      <label class="form-label">Estado Civil</label>
+      {{ form.estado_civil }}
+    </div>
+ 
     <div class="col-md-3">
       <label class="form-label">CEP</label>
       {{ form.cep }}
     </div>
-
+ 
     <div class="col-md-6">
       <label class="form-label">Logradouro</label>
       {{ form.logradouro }}
     </div>
-
+ 
     <div class="col-md-2">
       <label class="form-label">Número</label>
       {{ form.numero }}
     </div>
-
+ 
     <div class="col-md-4">
       <label class="form-label">Complemento</label>
       {{ form.complemento }}
     </div>
-
+ 
     <div class="col-md-4">
       <label class="form-label">Bairro</label>
       {{ form.bairro }}
     </div>
-
+ 
     <div class="col-md-4">
       <label class="form-label">Cidade</label>
       {{ form.cidade }}
     </div>
-
+ 
     <div class="col-md-2">
       <label class="form-label">UF</label>
       {{ form.uf }}
     </div>
-
-    {# === SEÇÃO NOVA: COMISSIONAMENTO === #}
+ 
+    {# === SEÇÃO: COMISSIONAMENTO === #}
     <div class="col-12 mt-4">
       <h5 class="text-primary border-bottom pb-2">
         <i class="bi bi-cash-coin me-2"></i>Configuração de Comissionamento
       </h5>
     </div>
-
+ 
     <div class="col-md-8">
       <label class="form-label">Parceiro / Comissionado Padrão</label>
       {{ form.parceiro_padrao }}
       <div class="form-text">Quem receberá comissão automaticamente pelos contratos deste cliente.</div>
     </div>
-
+ 
     <div class="col-md-4">
       <label class="form-label">% Comissão Padrão</label>
       <div class="input-group">
@@ -93,17 +110,14 @@
         <span class="input-group-text">%</span>
       </div>
     </div>
-    {# =================================== #}
-
   </div>
-
+ 
   <div class="d-flex gap-2 mt-4">
     <button type="submit" class="btn btn-success">Salvar</button>
-    
     <a href="{% url 'clientes:cliente_list' %}" class="btn btn-secondary">Cancelar</a>
   </div>
 </form>
-
+ 
 {# === DOCUMENTOS (só aparece ao editar) === #}
 {% if cliente %}
 <div class="card mt-4 shadow-sm">
@@ -111,7 +125,7 @@
     <h5 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Documentos do Cliente</h5>
   </div>
   <div class="card-body">
-
+ 
     {# Upload #}
     <form method="post" action="{% url 'clientes:upload_documento' cliente.id %}" enctype="multipart/form-data" class="mb-4">
       {% csrf_token %}
@@ -125,7 +139,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
           <label class="form-label small fw-semibold">Arquivo</label>
           <input type="file" name="arquivo" class="form-control form-control-sm" required
                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
@@ -146,6 +160,15 @@
                    placeholder="Ano" min="2020" max="2030" value="2026" style="width:80px;">
           </div>
         </div>
+        <div class="col-md-3" id="doc-renda-fields" style="display:none;">
+          <label class="form-label small fw-semibold">Renda Bruta / Líquida</label>
+          <div class="d-flex gap-1">
+            <input type="text" name="renda_bruta" class="form-control form-control-sm brl-mask-doc"
+                   placeholder="Bruta 0,00">
+            <input type="text" name="renda_liquida" class="form-control form-control-sm brl-mask-doc"
+                   placeholder="Líquida 0,00">
+          </div>
+        </div>
         <div class="col-md-2">
           <label class="form-label small fw-semibold">Descrição (opcional)</label>
           <input type="text" name="descricao" class="form-control form-control-sm" placeholder="Ex: IRPF 2025">
@@ -157,7 +180,7 @@
         </div>
       </div>
     </form>
-
+ 
     {# Lista de documentos #}
     {% if documentos %}
     <table class="table table-sm table-hover mb-0">
@@ -183,6 +206,12 @@
           <td class="small">
             {% if d.mes_referencia and d.ano_referencia %}
               {{ d.mes_referencia }}/{{ d.ano_referencia }}
+              {% if d.renda_bruta %}
+                <br><span class="text-muted">Bruta: R$ {{ d.renda_bruta|floatformat:2 }}</span>
+              {% endif %}
+              {% if d.renda_liquida %}
+                <br><span class="text-muted">Líquida: R$ {{ d.renda_liquida|floatformat:2 }}</span>
+              {% endif %}
             {% else %}
               —
             {% endif %}
@@ -213,47 +242,239 @@
   </div>
 </div>
 {% endif %}
-
-{# =========================
-   SCRIPTS
-   ========================= #}
-
+ 
+{# === BENS MÓVEIS (só ao editar) === #}
+{% if cliente %}
+<div class="card mt-4 shadow-sm">
+  <div class="card-header bg-dark text-white py-2">
+    <h5 class="mb-0"><i class="bi bi-truck me-2"></i>Bens Móveis (Veículos)</h5>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{% url 'clientes:adicionar_bem_movel' cliente.id %}" enctype="multipart/form-data" class="mb-3">
+      {% csrf_token %}
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Tipo</label>
+          <select name="tipo" class="form-select form-select-sm" required>
+            {% for val, label in tipos_movel %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Modelo/Descrição</label>
+          <input type="text" name="descricao" class="form-control form-control-sm" placeholder="Ex: Civic 2020">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Placa</label>
+          <input type="text" name="placa" class="form-control form-control-sm" placeholder="ABC1D23" style="text-transform:uppercase;">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">RENAVAM</label>
+          <input type="text" name="renavam" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Documentos</label>
+          <input type="file" name="documentos" class="form-control form-control-sm" multiple accept=".pdf,.jpg,.jpeg,.png">
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Adicionar</button>
+        </div>
+      </div>
+    </form>
+ 
+    {% for bm in bens_moveis %}
+    <div class="card mb-2 border-start border-3 border-primary">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <strong>{{ bm.get_tipo_display }}</strong>
+            {% if bm.descricao %} — {{ bm.descricao }}{% endif %}
+            <br>
+            <span class="small text-muted">
+              {% if bm.placa %}Placa: <strong>{{ bm.placa }}</strong> · {% endif %}
+              {% if bm.renavam %}RENAVAM: <strong>{{ bm.renavam }}</strong>{% endif %}
+            </span>
+          </div>
+          <a href="{% url 'clientes:excluir_bem_movel' bm.id %}" class="btn btn-sm btn-outline-danger py-0"
+             onclick="return confirm('Excluir este bem?')"><i class="bi bi-trash"></i></a>
+        </div>
+        {% if bm.documentos.all %}
+        <div class="mt-2">
+          {% for doc in bm.documentos.all %}
+          <span class="badge bg-light text-dark border me-1">
+            <a href="{{ doc.arquivo.url }}" target="_blank"><i class="bi bi-file-earmark me-1"></i>{{ doc.descricao|truncatechars:20 }}</a>
+            <a href="{% url 'clientes:excluir_doc_bem' doc.id %}" class="text-danger ms-1" onclick="return confirm('Excluir?')"><i class="bi bi-x"></i></a>
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <form method="post" action="{% url 'clientes:upload_doc_movel' bm.id %}" enctype="multipart/form-data" class="mt-2">
+          {% csrf_token %}
+          <div class="d-flex gap-1">
+            <input type="file" name="arquivo" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:250px;">
+            <input type="text" name="descricao" class="form-control form-control-sm" placeholder="Descrição" style="max-width:150px;">
+            <button type="submit" class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-upload"></i></button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% empty %}
+    <p class="text-muted text-center small mb-0">Nenhum bem móvel cadastrado.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+ 
+{# === BENS IMÓVEIS (só ao editar) === #}
+{% if cliente %}
+<div class="card mt-4 shadow-sm">
+  <div class="card-header bg-dark text-white py-2">
+    <h5 class="mb-0"><i class="bi bi-house-door me-2"></i>Bens Imóveis</h5>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{% url 'clientes:adicionar_bem_imovel' cliente.id %}" enctype="multipart/form-data" class="mb-3">
+      {% csrf_token %}
+      <div class="row g-2 align-items-end mb-2">
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Tipo</label>
+          <select name="tipo" class="form-select form-select-sm" required>
+            {% for val, label in tipos_imovel %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Descrição</label>
+          <input type="text" name="descricao" class="form-control form-control-sm" placeholder="Ex: Casa de praia">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Nº Matrícula</label>
+          <input type="text" name="matricula" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Documentos</label>
+          <input type="file" name="documentos" class="form-control form-control-sm" multiple accept=".pdf,.jpg,.jpeg,.png">
+        </div>
+        <div class="col-md-2" style="visibility:hidden;">.</div>
+      </div>
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Rua</label>
+          <input type="text" name="logradouro" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-1">
+          <label class="form-label small fw-semibold">Nº</label>
+          <input type="text" name="numero_imovel" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Bairro</label>
+          <input type="text" name="bairro" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Cidade</label>
+          <input type="text" name="cidade" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-1">
+          <label class="form-label small fw-semibold">UF</label>
+          <input type="text" name="uf" class="form-control form-control-sm" maxlength="2" style="text-transform:uppercase;">
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Adicionar</button>
+        </div>
+      </div>
+    </form>
+ 
+    {% for bi in bens_imoveis %}
+    <div class="card mb-2 border-start border-3 border-success">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <strong>{{ bi.get_tipo_display }}</strong>
+            {% if bi.descricao %} — {{ bi.descricao }}{% endif %}
+            <br>
+            <span class="small text-muted">
+              {% if bi.endereco_completo %}{{ bi.endereco_completo }}{% endif %}
+              {% if bi.matricula %} · Matrícula: <strong>{{ bi.matricula }}</strong>{% endif %}
+            </span>
+          </div>
+          <a href="{% url 'clientes:excluir_bem_imovel' bi.id %}" class="btn btn-sm btn-outline-danger py-0"
+             onclick="return confirm('Excluir este imóvel?')"><i class="bi bi-trash"></i></a>
+        </div>
+        {% if bi.documentos.all %}
+        <div class="mt-2">
+          {% for doc in bi.documentos.all %}
+          <span class="badge bg-light text-dark border me-1">
+            <a href="{{ doc.arquivo.url }}" target="_blank"><i class="bi bi-file-earmark me-1"></i>{{ doc.descricao|truncatechars:20 }}</a>
+            <a href="{% url 'clientes:excluir_doc_bem' doc.id %}" class="text-danger ms-1" onclick="return confirm('Excluir?')"><i class="bi bi-x"></i></a>
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <form method="post" action="{% url 'clientes:upload_doc_imovel' bi.id %}" enctype="multipart/form-data" class="mt-2">
+          {% csrf_token %}
+          <div class="d-flex gap-1">
+            <input type="file" name="arquivo" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:250px;">
+            <input type="text" name="descricao" class="form-control form-control-sm" placeholder="Descrição" style="max-width:150px;">
+            <button type="submit" class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-upload"></i></button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% empty %}
+    <p class="text-muted text-center small mb-0">Nenhum bem imóvel cadastrado.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+ 
+{# === SCRIPTS === #}
 <script src="{% static 'js/masks.js' %}"></script>
 <script src="{% static 'js/cep_fill.js' %}"></script>
-
+ 
 <script>
-/* Mostra mês/ano referência para comprovantes */
+/* Mostra/esconde campos condicionais por tipo de documento */
 (function(){
   var sel = document.getElementById('doc-tipo-select');
   var ref = document.getElementById('doc-ref-fields');
-  if(sel && ref){
+  var renda = document.getElementById('doc-renda-fields');
+  if(sel){
     sel.addEventListener('change', function(){
-      var show = (sel.value === 'COMP_RENDA' || sel.value === 'COMP_RESIDENCIA');
-      ref.style.display = show ? 'block' : 'none';
+      var isComp = (sel.value === 'COMP_RENDA' || sel.value === 'COMP_RESIDENCIA');
+      var isRenda = (sel.value === 'COMP_RENDA');
+      if(ref) ref.style.display = isComp ? 'block' : 'none';
+      if(renda) renda.style.display = isRenda ? 'block' : 'none';
     });
   }
+ 
+  /* Máscara BRL para campos de renda bruta/líquida */
+  document.querySelectorAll('.brl-mask-doc').forEach(function(el){
+    el.addEventListener('input', function(){
+      var v = el.value.replace(/\D/g, '');
+      if(v === '') { el.value = ''; return; }
+      var num = parseInt(v, 10);
+      var reais = (num / 100).toFixed(2);
+      var parts = reais.split('.');
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      el.value = parts.join(',');
+    });
+    el.addEventListener('keypress', function(e){
+      if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault();
+    });
+  });
 })();
-/* ===============================
-   DATA NASCIMENTO dd/mm/aaaa
-   =============================== */
+ 
+/* Data de nascimento dd/mm/aaaa */
 (function(){
   const el = document.getElementById("id_data_nascimento");
   if(!el) return;
-
   el.addEventListener("input", function(){
     let v = el.value.replace(/\D/g, "");
-
     if (v.length >= 3) v = v.slice(0,2) + "/" + v.slice(2);
     if (v.length >= 6) v = v.slice(0,5) + "/" + v.slice(5,9);
-
     el.value = v.slice(0,10);
   });
-
   el.addEventListener("keypress", function(e){
     const ch = String.fromCharCode(e.which);
     if (!/[0-9]/.test(ch)) e.preventDefault();
   });
 })();
 </script>
-
+ 
 {% endblock %}

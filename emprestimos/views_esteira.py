@@ -16,11 +16,11 @@ from django.db.models import Q, Case, When, Value, IntegerField
 from .models import (
     PropostaEmprestimo, EtapaProposta, ChecklistItem,
     PoliticaCredito, Emprestimo, Parcela, EmprestimoStatus,
-    ParcelaStatus, ContratoLog
+    ParcelaStatus, ContratoLog, GarantiaProposta
 )
 from .services import simular
 from .services_analise import gerar_dossie_cliente
-from clientes.models import Cliente
+from clientes.models import Cliente, BemMovel, BemImovel
 from financeiro.models import Transacao
 from contas.models import ContaCorrente, MovimentacaoConta
 from usuarios.decorators import cargo_minimo
@@ -169,6 +169,12 @@ def nova_proposta(request):
             vencimento = request.POST.get("vencimento")
             obs = request.POST.get("observacoes", "")
 
+            # Multa e mora
+            tem_multa = request.POST.get("tem_multa") == "on"
+            multa_pct = Decimal(request.POST.get("multa_percent", "2.00").replace(",", "."))
+            tem_mora = request.POST.get("tem_juros_mora") == "on"
+            mora_pct = Decimal(request.POST.get("juros_mora_percent", "2.00").replace(",", "."))
+
             if valor <= 0:
                 raise ValueError("Valor deve ser maior que zero.")
 
@@ -194,7 +200,48 @@ def nova_proposta(request):
                     usuario_solicitante=request.user,
                     observacoes=obs,
                     status="CAPTACAO",
+                    tem_multa=tem_multa,
+                    multa_percent=multa_pct if tem_multa else Decimal("0"),
+                    tem_juros_mora=tem_mora,
+                    juros_mora_percent=mora_pct if tem_mora else Decimal("0"),
                 )
+
+                # Garantias
+                # Cheques
+                cheque_numero = request.POST.get("cheque_numero", "").strip()
+                if cheque_numero:
+                    cheque_valor_str = request.POST.get("cheque_valor", "0").replace(".", "").replace(",", ".")
+                    GarantiaProposta.objects.create(
+                        proposta=proposta,
+                        tipo="CHEQUE",
+                        cheque_banco=request.POST.get("cheque_banco", ""),
+                        cheque_numero=cheque_numero,
+                        cheque_valor=Decimal(cheque_valor_str) if cheque_valor_str else None,
+                    )
+
+                # Avalistas
+                avalista_ids = request.POST.getlist("avalista_ids")
+                for av_id in avalista_ids:
+                    if av_id:
+                        GarantiaProposta.objects.create(
+                            proposta=proposta, tipo="AVALISTA", avalista_id=int(av_id),
+                        )
+
+                # Bens móveis
+                movel_ids = request.POST.getlist("bem_movel_ids")
+                for bm_id in movel_ids:
+                    if bm_id:
+                        GarantiaProposta.objects.create(
+                            proposta=proposta, tipo="BEM_MOVEL", bem_movel_id=int(bm_id),
+                        )
+
+                # Bens imóveis
+                imovel_ids = request.POST.getlist("bem_imovel_ids")
+                for bi_id in imovel_ids:
+                    if bi_id:
+                        GarantiaProposta.objects.create(
+                            proposta=proposta, tipo="BEM_IMOVEL", bem_imovel_id=int(bi_id),
+                        )
 
                 # Cria primeira etapa
                 etapa = EtapaProposta.objects.create(
@@ -314,6 +361,9 @@ def detalhe_proposta(request, proposta_id):
     contrato_formal = ContratoFormalizado.objects.filter(proposta=proposta).first()
     is_formalizacao = etapa_ativa and etapa_ativa.etapa == "FORMALIZACAO"
 
+    # Garantias
+    garantias = proposta.garantias.select_related("avalista", "bem_movel", "bem_imovel").all()
+
     # Checklist da formalização para exibir na liberação
     checklist_formalizacao = []
     if etapa_ativa and etapa_ativa.etapa == "LIBERACAO":
@@ -346,6 +396,7 @@ def detalhe_proposta(request, proposta_id):
         "is_comite": is_comite,
         "contrato_formal": contrato_formal,
         "is_formalizacao": is_formalizacao,
+        "garantias": garantias,
         "checklist_formalizacao": checklist_formalizacao,
     })
 
@@ -523,6 +574,9 @@ def _liberar_proposta(request, proposta):
         ajuste_arredondamento=ajuste,
         parceiro=proposta.parceiro,
         percentual_comissao=proposta.percentual_comissao,
+        tem_multa_atraso=proposta.tem_multa,
+        multa_atraso_percent=proposta.multa_percent,
+        juros_mora_mensal_percent=proposta.juros_mora_percent,
         status=EmprestimoStatus.ATIVO,
     )
 
@@ -936,6 +990,29 @@ def votar_comite(request, proposta_id):
 # ==============================================================================
 
 @login_required
+def buscar_bens_cliente_ajax(request):
+    """Retorna bens móveis e imóveis do cliente em JSON."""
+    cliente_id = request.GET.get("cliente_id")
+    if not cliente_id:
+        return JsonResponse({"moveis": [], "imoveis": []})
+
+    try:
+        cliente = Cliente.objects.get(id=cliente_id)
+    except Cliente.DoesNotExist:
+        return JsonResponse({"moveis": [], "imoveis": []})
+
+    moveis = [
+        {"id": b.id, "tipo": b.get_tipo_display(), "descricao": b.descricao, "placa": b.placa, "renavam": b.renavam}
+        for b in cliente.bens_moveis.all()
+    ]
+    imoveis = [
+        {"id": b.id, "tipo": b.get_tipo_display(), "descricao": b.descricao, "matricula": b.matricula, "endereco": b.endereco_completo}
+        for b in cliente.bens_imoveis.all()
+    ]
+
+    return JsonResponse({"moveis": moveis, "imoveis": imoveis})
+
+@login_required
 def simular_ajax(request):
     """Recebe valor, taxa, parcelas e vencimento via GET e retorna a simulação em JSON."""
     from .views import to_decimal
@@ -988,3 +1065,27 @@ def simular_ajax(request):
 
     except Exception as e:
         return JsonResponse({"erro": str(e)}, status=400)
+
+
+@login_required
+def bens_cliente_ajax(request):
+    """Retorna bens móveis e imóveis de um cliente em JSON."""
+    from clientes.models import BemMovel, BemImovel
+
+    cliente_id = request.GET.get("cliente_id")
+    if not cliente_id:
+        return JsonResponse({"moveis": [], "imoveis": []})
+
+    moveis = list(BemMovel.objects.filter(cliente_id=cliente_id).values(
+        "id", "tipo", "descricao", "placa", "renavam"
+    ))
+    for m in moveis:
+        m["tipo_display"] = dict(BemMovel.TIPO_CHOICES).get(m["tipo"], m["tipo"])
+
+    imoveis = list(BemImovel.objects.filter(cliente_id=cliente_id).values(
+        "id", "tipo", "descricao", "matricula", "logradouro", "numero", "bairro", "cidade", "uf"
+    ))
+    for i in imoveis:
+        i["tipo_display"] = dict(BemImovel.TIPO_CHOICES).get(i["tipo"], i["tipo"])
+
+    return JsonResponse({"moveis": moveis, "imoveis": imoveis})

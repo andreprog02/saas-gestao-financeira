@@ -20,4 +20,17 @@ urlpatterns = [
     # Documentos
     path("<int:cliente_id>/documento/upload/", views.upload_documento, name="upload_documento"),
     path("documento/<int:doc_id>/excluir/", views.excluir_documento, name="excluir_documento"),
+
+    # Bens Móveis
+    path("<int:cliente_id>/bem-movel/adicionar/", views.adicionar_bem_movel, name="adicionar_bem_movel"),
+    path("bem-movel/<int:bem_id>/excluir/", views.excluir_bem_movel, name="excluir_bem_movel"),
+    path("bem-movel/<int:bem_id>/doc/", views.upload_doc_movel, name="upload_doc_movel"),
+
+    # Bens Imóveis
+    path("<int:cliente_id>/bem-imovel/adicionar/", views.adicionar_bem_imovel, name="adicionar_bem_imovel"),
+    path("bem-imovel/<int:bem_id>/excluir/", views.excluir_bem_imovel, name="excluir_bem_imovel"),
+    path("bem-imovel/<int:bem_id>/doc/", views.upload_doc_imovel, name="upload_doc_imovel"),
+
+    # Doc de bem (genérico)
+    path("doc-bem/<int:doc_id>/excluir/", views.excluir_doc_bem, name="excluir_doc_bem"),
 ]

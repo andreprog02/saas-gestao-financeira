@@ -9,7 +9,7 @@ from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
 
 from .forms import ClienteForm
-from .models import Cliente, DocumentoCliente
+from .models import Cliente, DocumentoCliente, BemMovel, BemImovel, DocumentoBem
 from contas.models import ContaCorrente
 
 @login_required
@@ -60,6 +60,8 @@ def clientes_editar(request, cliente_id: int):
 
     documentos = cliente.documentos.all()
     tipos_doc = DocumentoCliente.TIPO_CHOICES
+    bens_moveis = cliente.bens_moveis.all()
+    bens_imoveis = cliente.bens_imoveis.all()
 
     return render(request, "clientes/form.html", {
         "form": form,
@@ -67,6 +69,10 @@ def clientes_editar(request, cliente_id: int):
         "cliente": cliente,
         "documentos": documentos,
         "tipos_doc": tipos_doc,
+        "bens_moveis": bens_moveis,
+        "bens_imoveis": bens_imoveis,
+        "tipos_movel": BemMovel.TIPO_CHOICES,
+        "tipos_imovel": BemImovel.TIPO_CHOICES,
     })
 
 
@@ -219,6 +225,25 @@ def upload_documento(request, cliente_id):
             doc.mes_referencia = int(mes_ref)
             doc.ano_referencia = int(ano_ref)
 
+        # Renda bruta e líquida (comprovante de renda)
+        def parse_brl(val):
+            if not val or not val.strip():
+                return None
+            from decimal import Decimal
+            limpo = val.replace("R$", "").replace(" ", "").strip()
+            if "," in limpo and "." in limpo:
+                limpo = limpo.replace(".", "").replace(",", ".")
+            elif "," in limpo:
+                limpo = limpo.replace(",", ".")
+            return Decimal(limpo)
+
+        renda_bruta = request.POST.get("renda_bruta", "")
+        renda_liquida = request.POST.get("renda_liquida", "")
+        if renda_bruta:
+            doc.renda_bruta = parse_brl(renda_bruta)
+        if renda_liquida:
+            doc.renda_liquida = parse_brl(renda_liquida)
+
         doc.save()
         messages.success(request, f"Documento '{doc.get_tipo_display()}' enviado com sucesso.")
 
@@ -230,6 +255,114 @@ def excluir_documento(request, doc_id):
     """Exclui um documento do cliente."""
     doc = get_object_or_404(DocumentoCliente, id=doc_id)
     cliente_id = doc.cliente_id
+    doc.arquivo.delete(save=False)
+    doc.delete()
+    messages.info(request, "Documento excluído.")
+    return redirect("clientes:editar", cliente_id=cliente_id)
+
+
+# ==============================================================================
+# BENS MÓVEIS
+# ==============================================================================
+
+@login_required
+def adicionar_bem_movel(request, cliente_id):
+    cliente = get_object_or_404(Cliente, id=cliente_id)
+    if request.method == "POST":
+        bem = BemMovel.objects.create(
+            cliente=cliente,
+            tipo=request.POST.get("tipo", "OUTRO"),
+            descricao=request.POST.get("descricao", "").strip(),
+            placa=request.POST.get("placa", "").strip().upper(),
+            renavam=request.POST.get("renavam", "").strip(),
+        )
+        # Upload de documentos
+        for f in request.FILES.getlist("documentos"):
+            DocumentoBem.objects.create(bem_movel=bem, arquivo=f, descricao=f.name)
+        messages.success(request, f"Bem móvel '{bem.get_tipo_display()}' adicionado.")
+    return redirect("clientes:editar", cliente_id=cliente.id)
+
+
+@login_required
+def excluir_bem_movel(request, bem_id):
+    bem = get_object_or_404(BemMovel, id=bem_id)
+    cliente_id = bem.cliente_id
+    for doc in bem.documentos.all():
+        doc.arquivo.delete(save=False)
+    bem.delete()
+    messages.info(request, "Bem móvel excluído.")
+    return redirect("clientes:editar", cliente_id=cliente_id)
+
+
+@login_required
+def upload_doc_movel(request, bem_id):
+    bem = get_object_or_404(BemMovel, id=bem_id)
+    if request.method == "POST":
+        arquivo = request.FILES.get("arquivo")
+        if arquivo:
+            DocumentoBem.objects.create(
+                bem_movel=bem, arquivo=arquivo,
+                descricao=request.POST.get("descricao", arquivo.name),
+            )
+            messages.success(request, "Documento adicionado ao bem móvel.")
+    return redirect("clientes:editar", cliente_id=bem.cliente_id)
+
+
+# ==============================================================================
+# BENS IMÓVEIS
+# ==============================================================================
+
+@login_required
+def adicionar_bem_imovel(request, cliente_id):
+    cliente = get_object_or_404(Cliente, id=cliente_id)
+    if request.method == "POST":
+        bem = BemImovel.objects.create(
+            cliente=cliente,
+            tipo=request.POST.get("tipo", "OUTRO"),
+            descricao=request.POST.get("descricao", "").strip(),
+            matricula=request.POST.get("matricula", "").strip(),
+            logradouro=request.POST.get("logradouro", "").strip(),
+            numero=request.POST.get("numero_imovel", "").strip(),
+            bairro=request.POST.get("bairro", "").strip(),
+            cidade=request.POST.get("cidade", "").strip(),
+            uf=request.POST.get("uf", "").strip().upper(),
+            cep=request.POST.get("cep", "").strip(),
+        )
+        for f in request.FILES.getlist("documentos"):
+            DocumentoBem.objects.create(bem_imovel=bem, arquivo=f, descricao=f.name)
+        messages.success(request, f"Bem imóvel '{bem.get_tipo_display()}' adicionado.")
+    return redirect("clientes:editar", cliente_id=cliente.id)
+
+
+@login_required
+def excluir_bem_imovel(request, bem_id):
+    bem = get_object_or_404(BemImovel, id=bem_id)
+    cliente_id = bem.cliente_id
+    for doc in bem.documentos.all():
+        doc.arquivo.delete(save=False)
+    bem.delete()
+    messages.info(request, "Bem imóvel excluído.")
+    return redirect("clientes:editar", cliente_id=cliente_id)
+
+
+@login_required
+def upload_doc_imovel(request, bem_id):
+    bem = get_object_or_404(BemImovel, id=bem_id)
+    if request.method == "POST":
+        arquivo = request.FILES.get("arquivo")
+        if arquivo:
+            DocumentoBem.objects.create(
+                bem_imovel=bem, arquivo=arquivo,
+                descricao=request.POST.get("descricao", arquivo.name),
+            )
+            messages.success(request, "Documento adicionado ao bem imóvel.")
+    return redirect("clientes:editar", cliente_id=bem.cliente_id)
+
+
+@login_required
+def excluir_doc_bem(request, doc_id):
+    doc = get_object_or_404(DocumentoBem, id=doc_id)
+    cliente_id = (doc.bem_movel.cliente_id if doc.bem_movel else doc.bem_imovel.cliente_id)
     doc.arquivo.delete(save=False)
     doc.delete()
     messages.info(request, "Documento excluído.")

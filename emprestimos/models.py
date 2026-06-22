@@ -257,6 +257,16 @@ class PropostaEmprestimo(models.Model):
     qtd_parcelas = models.IntegerField()
     taxa_juros = models.DecimalField(max_digits=6, decimal_places=2)
     primeiro_vencimento = models.DateField()
+
+    # Multa e Juros de Mora
+    tem_multa = models.BooleanField("Aplicar Multa por Atraso?", default=True)
+    multa_percent = models.DecimalField(
+        "Multa (%)", max_digits=5, decimal_places=2, default=Decimal("2.00")
+    )
+    tem_juros_mora = models.BooleanField("Aplicar Juros de Mora?", default=True)
+    juros_mora_percent = models.DecimalField(
+        "Juros de Mora (% a.m.)", max_digits=5, decimal_places=2, default=Decimal("2.00")
+    )
     
     # === NOVOS CAMPOS NA PROPOSTA ===
     parceiro = models.ForeignKey(
@@ -590,3 +600,61 @@ class ContratoFormalizado(models.Model):
     @classmethod
     def gerar_numero_formatado(cls, numero, ano):
         return f"{numero:03d}/{ano} EMP"
+
+
+class GarantiaProposta(models.Model):
+    """Garantias vinculadas a uma proposta de empréstimo."""
+
+    TIPO_CHOICES = [
+        ("CHEQUE", "Cheque"),
+        ("AVALISTA", "Avalista"),
+        ("BEM_MOVEL", "Bem Móvel (Veículo)"),
+        ("BEM_IMOVEL", "Bem Imóvel"),
+    ]
+
+    proposta = models.ForeignKey(
+        PropostaEmprestimo, on_delete=models.CASCADE, related_name="garantias"
+    )
+    tipo = models.CharField("Tipo", max_length=15, choices=TIPO_CHOICES)
+    descricao = models.CharField("Descrição", max_length=200, blank=True, default="")
+
+    # Cheque
+    cheque_banco = models.CharField("Banco", max_length=50, blank=True, default="")
+    cheque_numero = models.CharField("Nº Cheque", max_length=30, blank=True, default="")
+    cheque_valor = models.DecimalField("Valor Cheque", max_digits=12, decimal_places=2, null=True, blank=True)
+
+    # Avalista (outro cliente)
+    avalista = models.ForeignKey(
+        Cliente, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="garantias_avalista", verbose_name="Avalista",
+    )
+
+    # Bem móvel do cliente
+    bem_movel = models.ForeignKey(
+        "clientes.BemMovel", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="garantias_proposta",
+    )
+
+    # Bem imóvel do cliente
+    bem_imovel = models.ForeignKey(
+        "clientes.BemImovel", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="garantias_proposta",
+    )
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["tipo"]
+        verbose_name = "Garantia da Proposta"
+        verbose_name_plural = "Garantias das Propostas"
+
+    def __str__(self):
+        if self.tipo == "CHEQUE":
+            return f"Cheque {self.cheque_numero} — R$ {self.cheque_valor or 0}"
+        if self.tipo == "AVALISTA" and self.avalista:
+            return f"Avalista: {self.avalista.nome_completo}"
+        if self.tipo == "BEM_MOVEL" and self.bem_movel:
+            return f"Veículo: {self.bem_movel.placa} — {self.bem_movel.descricao}"
+        if self.tipo == "BEM_IMOVEL" and self.bem_imovel:
+            return f"Imóvel: {self.bem_imovel.get_tipo_display()} — {self.bem_imovel.matricula}"
+        return f"{self.get_tipo_display()}: {self.descricao}"

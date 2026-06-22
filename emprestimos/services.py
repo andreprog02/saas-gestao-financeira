@@ -24,15 +24,16 @@ class ParcelaGerada:
 
 def round_centena_superior(valor: Decimal) -> Decimal:
     """
-    Arredonda sempre para a centena superior.
+    Arredonda para a dezena superior (máximo R$ 10 de aumento).
     Ex:
-      1789.00 -> 1800.00
-      1800.00 -> 1800.00
-      1801.00 -> 1900.00
+      581.00 -> 590.00
+      590.00 -> 590.00
+      591.00 -> 600.00
+      1789.00 -> 1790.00
     """
     valor = Decimal(valor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    centenas = (valor / Decimal("100")).to_integral_value(rounding=ROUND_CEILING)
-    return (centenas * Decimal("100")).quantize(Decimal("0.00"))
+    dezenas = (valor / Decimal("10")).to_integral_value(rounding=ROUND_CEILING)
+    return (dezenas * Decimal("10")).quantize(Decimal("0.00"))
 
 
 def parcela_price(valor_emprestado: Decimal, taxa_pct: Decimal, n: int) -> Decimal:

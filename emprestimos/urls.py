@@ -39,6 +39,8 @@ urlpatterns = [
     path("esteira/<int:proposta_id>/promissoria-pdf/", views_esteira.emitir_promissoria_pdf, name="esteira_promissoria_pdf"),
     path("esteira/checklist/<int:item_id>/", views_esteira.marcar_checklist, name="esteira_checklist"),
     path("esteira/simular/", views_esteira.simular_ajax, name="esteira_simular"),
+    path("esteira/bens-cliente/", views_esteira.bens_cliente_ajax, name="esteira_bens_cliente"),
+    path("esteira/bens-cliente/", views_esteira.buscar_bens_cliente_ajax, name="esteira_bens_cliente"),
 
     # --- Legado (propostas antigas, mantido para compatibilidade) ---
     path('propostas/', views.listar_propostas, name='listar_propostas'),
