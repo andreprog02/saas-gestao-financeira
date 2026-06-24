@@ -19,6 +19,14 @@
   </div>
   
   <div class="d-flex gap-2">
+    {% if contrato_formal %}
+    <a href="{% url 'emprestimos:reimprimir_contrato' contrato_formal.id %}" class="btn btn-outline-danger fw-bold">
+      <i class="bi bi-file-pdf me-1"></i> Contrato PDF
+    </a>
+    <a href="{% url 'emprestimos:reimprimir_promissoria' contrato_formal.id %}" class="btn btn-outline-danger fw-bold">
+      <i class="bi bi-file-pdf me-1"></i> Promissória
+    </a>
+    {% endif %}
     <button type="button" class="btn btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#modalParceiro">
         <i class="bi bi-person-gear me-1"></i> Parceiro
     </button>

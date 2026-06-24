@@ -107,11 +107,18 @@ def contrato_detalhe(request, pk):
     
     todos_clientes = Cliente.objects.all().order_by('nome_completo')
 
+    # Busca contrato formalizado (para reimpressão)
+    from .models import ContratoFormalizado
+    contrato_formal = ContratoFormalizado.objects.filter(
+        proposta__emprestimo_gerado=contrato
+    ).first()
+
     return render(request, "emprestimos/contrato_detalhe.html", {
         "contrato": contrato,
         "parcelas": parcelas,
         "todos_clientes": todos_clientes,
         "hoje": timezone.localdate(),
+        "contrato_formal": contrato_formal,
     })
 
 @login_required
@@ -614,3 +621,59 @@ def analisar_proposta(request, proposta_id):
         'dossie': dossie,
         'todos_parceiros': todos_parceiros
     })
+
+# ==============================================================================
+# CONTRATOS FORMALIZADOS — Listagem e Reimpressão
+# ==============================================================================
+
+@login_required
+def listar_contratos_formalizados(request):
+    """Lista todos os contratos formalizados com busca e filtro."""
+    from .models import ContratoFormalizado
+
+    contratos = ContratoFormalizado.objects.select_related(
+        "proposta__cliente", "emitido_por"
+    ).order_by("-ano", "-numero")
+
+    # Filtro por busca
+    busca = request.GET.get("q", "")
+    if busca:
+        contratos = contratos.filter(
+            Q(numero_formatado__icontains=busca) |
+            Q(proposta__cliente__nome_completo__icontains=busca) |
+            Q(proposta__cliente__cpf__icontains=busca)
+        )
+
+    # Filtro por ano
+    ano = request.GET.get("ano", "")
+    if ano:
+        contratos = contratos.filter(ano=int(ano))
+
+    anos = ContratoFormalizado.objects.values_list("ano", flat=True).distinct().order_by("-ano")
+
+    return render(request, "emprestimos/contratos_formalizados.html", {
+        "contratos": contratos,
+        "busca": busca,
+        "ano_filtro": ano,
+        "anos": anos,
+    })
+
+
+@login_required
+def reimprimir_contrato_pdf(request, contrato_f_id):
+    """Reimprimir contrato PDF a partir do ContratoFormalizado."""
+    from .models import ContratoFormalizado
+    from .views_esteira import emitir_contrato_pdf
+
+    cf = get_object_or_404(ContratoFormalizado, id=contrato_f_id)
+    return emitir_contrato_pdf(request, cf.proposta_id)
+
+
+@login_required
+def reimprimir_promissoria_pdf(request, contrato_f_id):
+    """Reimprimir nota promissória a partir do ContratoFormalizado."""
+    from .models import ContratoFormalizado
+    from .views_esteira import emitir_promissoria_pdf
+
+    cf = get_object_or_404(ContratoFormalizado, id=contrato_f_id)
+    return emitir_promissoria_pdf(request, cf.proposta_id)

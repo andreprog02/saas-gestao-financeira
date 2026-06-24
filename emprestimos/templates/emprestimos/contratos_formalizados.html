@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-file-earmark-ruled me-2"></i>Contratos Formalizados</h4>
+  <a href="{% url 'emprestimos:contratos' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-list me-1"></i>Todos os Contratos
+  </a>
+</div>
+
+<!-- FILTROS -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="d-flex gap-2 align-items-end">
+      <div class="flex-grow-1">
+        <label class="form-label small fw-semibold mb-0">Buscar</label>
+        <input type="text" name="q" class="form-control form-control-sm" value="{{ busca }}"
+               placeholder="Nome, CPF ou nº do contrato...">
+      </div>
+      <div>
+        <label class="form-label small fw-semibold mb-0">Ano</label>
+        <select name="ano" class="form-select form-select-sm" style="width:100px;">
+          <option value="">Todos</option>
+          {% for a in anos %}
+          <option value="{{ a }}" {% if ano_filtro == a|stringformat:"d" %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search"></i></button>
+        <a href="{% url 'emprestimos:contratos_formalizados' %}" class="btn btn-sm btn-outline-secondary">Limpar</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- TABELA -->
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Nº Contrato</th>
+          <th>Cliente</th>
+          <th>CPF</th>
+          <th class="text-end">Valor</th>
+          <th class="text-center">Parcelas</th>
+          <th>Contrato</th>
+          <th>Promissória</th>
+          <th>Emitido por</th>
+          <th class="text-end">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cf in contratos %}
+        <tr>
+          <td>
+            <span class="badge bg-dark fs-6">{{ cf.numero_formatado }}</span>
+          </td>
+          <td class="fw-semibold small">{{ cf.proposta.cliente.nome_completo }}</td>
+          <td class="small text-muted">{{ cf.proposta.cliente.cpf }}</td>
+          <td class="text-end fw-bold small">R$ {{ cf.proposta.valor_solicitado|floatformat:2 }}</td>
+          <td class="text-center small">{{ cf.proposta.qtd_parcelas }}x</td>
+          <td class="small">
+            {% if cf.contrato_emitido %}
+              <span class="badge bg-success">Emitido {{ cf.contrato_emitido_em|date:"d/m/Y" }}</span>
+            {% else %}
+              <span class="badge bg-warning text-dark">Pendente</span>
+            {% endif %}
+          </td>
+          <td class="small">
+            {% if cf.promissoria_emitida %}
+              <span class="badge bg-success">Emitida {{ cf.promissoria_emitida_em|date:"d/m/Y" }}</span>
+            {% else %}
+              <span class="badge bg-warning text-dark">Pendente</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">
+            {{ cf.emitido_por.get_full_name|default:cf.emitido_por.username|default:"-" }}
+          </td>
+          <td class="text-end">
+            <a href="{% url 'emprestimos:reimprimir_contrato' cf.id %}" class="btn btn-sm btn-outline-danger py-0"
+               title="Reimprimir Contrato">
+              <i class="bi bi-file-pdf me-1"></i>Contrato
+            </a>
+            <a href="{% url 'emprestimos:reimprimir_promissoria' cf.id %}" class="btn btn-sm btn-outline-danger py-0"
+               title="Reimprimir Promissória">
+              <i class="bi bi-file-pdf me-1"></i>Promissória
+            </a>
+            {% if cf.proposta.emprestimo_gerado %}
+            <a href="{% url 'emprestimos:contrato_detalhe' cf.proposta.emprestimo_gerado.id %}" class="btn btn-sm btn-outline-primary py-0"
+               title="Ver Contrato">
+              <i class="bi bi-eye"></i>
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="9" class="text-center text-muted py-4">
+            Nenhum contrato formalizado{% if busca or ano_filtro %} com estes filtros{% endif %}.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

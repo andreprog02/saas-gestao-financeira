@@ -12,8 +12,11 @@ urlpatterns = [
 
     # --- Gestão de Contratos ---
     path("contratos/", views.listar_contratos, name="contratos"),
+    path("contratos/formalizados/", views.listar_contratos_formalizados, name="contratos_formalizados"),
     path("contratos/<int:pk>/", views.contrato_detalhe, name="contrato_detalhe"),
     path("contratos/<int:pk>/cancelar/", views.cancelar_contrato, name="cancelar_contrato"),
+    path("contratos/reimprimir/<int:contrato_f_id>/contrato/", views.reimprimir_contrato_pdf, name="reimprimir_contrato"),
+    path("contratos/reimprimir/<int:contrato_f_id>/promissoria/", views.reimprimir_promissoria_pdf, name="reimprimir_promissoria"),
 
     # --- Funcionalidades de Parcelas ---
     path("parcela/<int:pk>/pagar/", views.pagar_parcela, name="pagar_parcela"),
