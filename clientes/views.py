@@ -11,6 +11,7 @@ from django.contrib.auth.decorators import login_required
 from .forms import ClienteForm
 from .models import Cliente, DocumentoCliente, BemMovel, BemImovel, DocumentoBem
 from contas.models import ContaCorrente
+from core.validators import validar_upload
 
 @login_required
 def clientes_lista(request):
@@ -212,6 +213,12 @@ def upload_documento(request, cliente_id):
 
         if not tipo or not arquivo:
             messages.error(request, "Selecione o tipo e o arquivo.")
+            return redirect("clientes:editar", cliente_id=cliente.id)
+
+        try:
+            validar_upload(arquivo)
+        except Exception as e:
+            messages.error(request, str(e))
             return redirect("clientes:editar", cliente_id=cliente.id)
 
         doc = DocumentoCliente(

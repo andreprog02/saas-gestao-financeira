@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">
+    <i class="bi bi-calculator me-2"></i>Posição de Dívida — {{ cliente.nome_completo }}
+  </h4>
+  <a href="{% url 'clientes:cliente_list' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Voltar
+  </a>
+</div>
+
+<!-- DADOS DO CLIENTE -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="row small">
+      <div class="col-auto"><span class="text-muted">CPF:</span> <strong>{{ cliente.cpf }}</strong></div>
+      <div class="col-auto"><span class="text-muted">Tel:</span> <strong>{{ cliente.telefone|default:"-" }}</strong></div>
+      <div class="col-auto"><span class="text-muted">Data cálculo:</span> <strong>{{ hoje|date:"d/m/Y" }}</strong></div>
+    </div>
+  </div>
+</div>
+
+<!-- RESUMO GERAL -->
+<div class="row g-3 mb-3">
+  <div class="col">
+    <div class="card border-primary shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Saldo Original</small>
+        <span class="fw-bold fs-5">R$ {{ total_geral.original|floatformat:2 }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-danger shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Multa</small>
+        <span class="fw-bold fs-5 text-danger">R$ {{ total_geral.multa|floatformat:2 }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-danger shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Juros de Mora</small>
+        <span class="fw-bold fs-5 text-danger">R$ {{ total_geral.juros|floatformat:2 }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-dark shadow-sm bg-dark bg-opacity-10">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Total Atualizado</small>
+        <span class="fw-bold fs-4 text-primary">R$ {{ total_geral.atualizado|floatformat:2 }}</span>
+      </div>
+    </div>
+  </div>
+  {% if total_geral.qtd_vencidas > 0 %}
+  <div class="col-auto">
+    <div class="card border-danger bg-danger bg-opacity-10 shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Vencidas</small>
+        <span class="fw-bold fs-5 text-danger">{{ total_geral.qtd_vencidas }}</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- DETALHAMENTO POR CONTRATO -->
+{% for item in posicoes %}
+<div class="card shadow-sm mb-3 {% if item.posicao.qtd_vencidas > 0 %}border-danger{% endif %}">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <strong>
+      <i class="bi bi-file-earmark-text me-1"></i>
+      <a href="{% url 'emprestimos:contrato_detalhe' item.contrato.id %}">{{ item.contrato.codigo_contrato }}</a>
+      — R$ {{ item.contrato.valor_emprestado|floatformat:2 }}
+    </strong>
+    <div>
+      {% if item.contrato.status == 'ATRASADO' %}
+        <span class="badge bg-danger">Atrasado</span>
+      {% else %}
+        <span class="badge bg-success">Ativo</span>
+      {% endif %}
+      <span class="badge bg-secondary ms-1">
+        {{ item.posicao.parcelas_pagas }}/{{ item.posicao.total_parcelas }} pagas
+      </span>
+    </div>
+  </div>
+  <div class="card-body">
+    <!-- Resumo do contrato -->
+    <div class="row text-center small mb-3">
+      <div class="col">
+        <span class="text-muted d-block">Saldo Original</span>
+        <strong>R$ {{ item.posicao.total_original|floatformat:2 }}</strong>
+      </div>
+      <div class="col">
+        <span class="text-muted d-block">Multa</span>
+        <strong class="text-danger">R$ {{ item.posicao.total_multa|floatformat:2 }}</strong>
+      </div>
+      <div class="col">
+        <span class="text-muted d-block">Juros Mora</span>
+        <strong class="text-danger">R$ {{ item.posicao.total_juros|floatformat:2 }}</strong>
+      </div>
+      <div class="col">
+        <span class="text-muted d-block">Total Hoje</span>
+        <strong class="text-primary fs-5">R$ {{ item.posicao.total_atualizado|floatformat:2 }}</strong>
+      </div>
+    </div>
+
+    <!-- Parcelas vencidas -->
+    {% if item.posicao.parcelas_vencidas %}
+    <table class="table table-sm table-bordered mb-2">
+      <thead class="table-danger">
+        <tr>
+          <th class="text-center">#</th>
+          <th>Vencimento</th>
+          <th class="text-center">Dias</th>
+          <th class="text-end">Original</th>
+          <th class="text-end">Multa</th>
+          <th class="text-end">Juros</th>
+          <th class="text-end fw-bold">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pv in item.posicao.parcelas_vencidas %}
+        <tr>
+          <td class="text-center">{{ pv.numero }}</td>
+          <td>{{ pv.vencimento|date:"d/m/Y" }}</td>
+          <td class="text-center"><span class="badge bg-danger">{{ pv.dias_atraso }}d</span></td>
+          <td class="text-end">R$ {{ pv.valor_original|floatformat:2 }}</td>
+          <td class="text-end text-danger">R$ {{ pv.multa|floatformat:2 }}</td>
+          <td class="text-end text-danger">R$ {{ pv.juros|floatformat:2 }}</td>
+          <td class="text-end fw-bold">R$ {{ pv.total|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Parcelas a vencer -->
+    {% if item.posicao.parcelas_a_vencer %}
+    <details class="small">
+      <summary class="text-muted cursor-pointer">
+        <i class="bi bi-calendar me-1"></i>{{ item.posicao.qtd_a_vencer }} parcela{{ item.posicao.qtd_a_vencer|pluralize:"s" }} a vencer
+      </summary>
+      <table class="table table-sm mt-1 mb-0">
+        <tbody>
+          {% for pa in item.posicao.parcelas_a_vencer %}
+          <tr>
+            <td class="text-center" style="width:40px;">{{ pa.numero }}</td>
+            <td>{{ pa.vencimento|date:"d/m/Y" }}</td>
+            <td class="text-end">R$ {{ pa.valor|floatformat:2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% empty %}
+<div class="alert alert-success py-3 text-center">
+  <i class="bi bi-check-circle-fill me-2 fs-4"></i>
+  <strong>Este cliente não possui contratos em aberto.</strong>
+</div>
+{% endfor %}
+{% endblock %}

@@ -18,6 +18,9 @@ urlpatterns = [
     path("contratos/reimprimir/<int:contrato_f_id>/contrato/", views.reimprimir_contrato_pdf, name="reimprimir_contrato"),
     path("contratos/reimprimir/<int:contrato_f_id>/promissoria/", views.reimprimir_promissoria_pdf, name="reimprimir_promissoria"),
 
+    # Posição de dívida do cliente
+    path("posicao-divida/<int:cliente_id>/", views.posicao_cliente, name="posicao_cliente"),
+
     # --- Funcionalidades de Parcelas ---
     path("parcela/<int:pk>/pagar/", views.pagar_parcela, name="pagar_parcela"),
     path("parcela/<int:parcela_id>/calcular-valores/", views.calcular_valores_parcela_ajax, name="calcular_valores_ajax"),

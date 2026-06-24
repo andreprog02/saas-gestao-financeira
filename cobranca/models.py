@@ -102,3 +102,45 @@ class CartaCobranca(models.Model):
     def gerar_numero_formatado(cls, numero, ano):
         """Formata: 001/2026"""
         return f"{numero:03d}/{ano}"
+
+class DespesaCobranca(models.Model):
+    """Despesas de cobrança vinculadas a contratos (cartório, correios, etc.)."""
+
+    TIPO_CHOICES = [
+        ("CARTORIO", "Cartório / Protesto"),
+        ("CORREIOS", "Correios / Correspondência"),
+        ("HONORARIOS", "Honorários Advocatícios"),
+        ("CUSTAS", "Custas Judiciais"),
+        ("OFICIAL", "Oficial de Justiça"),
+        ("DESLOCAMENTO", "Deslocamento"),
+        ("CONSULTA_CREDITO", "Consulta de Crédito (SPC/Serasa)"),
+        ("LIGACAO", "Ligações Telefônicas"),
+        ("OUTROS", "Outros"),
+    ]
+
+    emprestimo = models.ForeignKey(
+        Emprestimo, on_delete=models.CASCADE, related_name="despesas_cobranca",
+        verbose_name="Contrato",
+    )
+    tipo = models.CharField("Tipo", max_length=20, choices=TIPO_CHOICES)
+    descricao = models.CharField("Descrição", max_length=200, blank=True, default="")
+    valor = models.DecimalField("Valor (R$)", max_digits=12, decimal_places=2)
+    data = models.DateField("Data da Despesa", default=timezone.now)
+    comprovante = models.FileField(
+        "Comprovante", upload_to="despesas_cobranca/%Y/%m/",
+        blank=True, null=True,
+    )
+
+    registrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data"]
+        verbose_name = "Despesa de Cobrança"
+        verbose_name_plural = "Despesas de Cobrança"
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} — R$ {self.valor} — {self.emprestimo.codigo_contrato}"

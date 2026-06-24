@@ -40,6 +40,94 @@
 
 <hr class="my-3">
 
+<!-- POSIÇÃO DE DÍVIDA ATUALIZADA -->
+{% if posicao %}
+<div class="card shadow-sm mb-3 {% if posicao.qtd_vencidas > 0 %}border-danger{% else %}border-success{% endif %}">
+  <div class="card-header py-2 {% if posicao.qtd_vencidas > 0 %}bg-danger text-white{% else %}bg-success text-white{% endif %}">
+    <strong><i class="bi bi-calculator me-1"></i>Posição de Dívida Atualizada — {{ posicao.data_calculo|date:"d/m/Y" }}</strong>
+  </div>
+  <div class="card-body">
+    <div class="row text-center g-2 mb-3">
+      <div class="col">
+        <small class="text-muted d-block">Saldo Original</small>
+        <span class="fw-bold fs-5">R$ {{ posicao.total_original|floatformat:2 }}</span>
+      </div>
+      {% if posicao.total_multa > 0 %}
+      <div class="col">
+        <small class="text-muted d-block">Multa</small>
+        <span class="fw-bold fs-5 text-danger">R$ {{ posicao.total_multa|floatformat:2 }}</span>
+      </div>
+      {% endif %}
+      {% if posicao.total_juros > 0 %}
+      <div class="col">
+        <small class="text-muted d-block">Juros de Mora</small>
+        <span class="fw-bold fs-5 text-danger">R$ {{ posicao.total_juros|floatformat:2 }}</span>
+      </div>
+      {% endif %}
+      <div class="col">
+        <small class="text-muted d-block">Total Atualizado</small>
+        <span class="fw-bold fs-4 text-primary">R$ {{ posicao.total_atualizado|floatformat:2 }}</span>
+      </div>
+    </div>
+
+    <div class="row text-center small">
+      <div class="col">
+        <span class="badge bg-success">{{ posicao.parcelas_pagas }} pagas</span>
+      </div>
+      {% if posicao.qtd_vencidas > 0 %}
+      <div class="col">
+        <span class="badge bg-danger">{{ posicao.qtd_vencidas }} vencida{{ posicao.qtd_vencidas|pluralize:"s" }}</span>
+      </div>
+      {% endif %}
+      <div class="col">
+        <span class="badge bg-secondary">{{ posicao.qtd_a_vencer }} a vencer</span>
+      </div>
+      <div class="col">
+        {% if posicao.total_encargos > 0 %}
+          <span class="badge bg-warning text-dark">Encargos: R$ {{ posicao.total_encargos|floatformat:2 }}</span>
+        {% else %}
+          <span class="badge bg-success">Sem encargos</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- DETALHAMENTO PARCELAS VENCIDAS -->
+    {% if posicao.parcelas_vencidas %}
+    <div class="mt-3">
+      <h6 class="small fw-bold text-danger mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Parcelas Vencidas — Valores Atualizados</h6>
+      <table class="table table-sm table-bordered mb-0">
+        <thead class="table-danger">
+          <tr>
+            <th class="text-center">#</th>
+            <th>Vencimento</th>
+            <th class="text-center">Dias Atraso</th>
+            <th class="text-end">Original</th>
+            <th class="text-end">Multa</th>
+            <th class="text-end">Juros</th>
+            <th class="text-end fw-bold">Total Hoje</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pv in posicao.parcelas_vencidas %}
+          <tr>
+            <td class="text-center">{{ pv.numero }}</td>
+            <td>{{ pv.vencimento|date:"d/m/Y" }}</td>
+            <td class="text-center"><span class="badge bg-danger">{{ pv.dias_atraso }}d</span></td>
+            <td class="text-end">R$ {{ pv.valor_original|floatformat:2 }}</td>
+            <td class="text-end text-danger">R$ {{ pv.multa|floatformat:2 }}</td>
+            <td class="text-end text-danger">R$ {{ pv.juros|floatformat:2 }}</td>
+            <td class="text-end fw-bold">R$ {{ pv.total|floatformat:2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- PARCELAS -->
 <div class="table-responsive">
   <table class="table table-sm align-middle table-hover">
     <thead>
@@ -83,6 +171,115 @@
     </tbody>
   </table>
 </div>
+
+<!-- DESPESAS DE COBRANÇA -->
+{% load cobranca_tags %}
+<div class="card shadow-sm mt-3 mb-3">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <strong><i class="bi bi-cash-stack me-1"></i>Despesas de Cobrança</strong>
+    {% if contrato.despesas_cobranca.all %}
+    <span class="badge bg-warning text-dark">
+      Total: R$ {% total_despesas contrato as td %}{{ td|floatformat:2 }}
+    </span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <!-- Formulário adicionar -->
+    <form method="post" action="{% url 'cobranca:despesa_adicionar' contrato.id %}" enctype="multipart/form-data" class="mb-3">
+      {% csrf_token %}
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Tipo</label>
+          <select name="tipo" class="form-select form-select-sm" required>
+            <option value="CARTORIO">Cartório / Protesto</option>
+            <option value="CORREIOS">Correios</option>
+            <option value="HONORARIOS">Honorários</option>
+            <option value="CUSTAS">Custas Judiciais</option>
+            <option value="OFICIAL">Oficial de Justiça</option>
+            <option value="DESLOCAMENTO">Deslocamento</option>
+            <option value="CONSULTA_CREDITO">Consulta Crédito</option>
+            <option value="LIGACAO">Ligações</option>
+            <option value="OUTROS">Outros</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Valor (R$)</label>
+          <input type="text" name="valor" class="form-control form-control-sm desp-brl" placeholder="0,00" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Data</label>
+          <input type="date" name="data" class="form-control form-control-sm" value="{{ hoje|date:'Y-m-d' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Descrição</label>
+          <input type="text" name="descricao" class="form-control form-control-sm" placeholder="Detalhe...">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Comprovante</label>
+          <input type="file" name="comprovante" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-sm btn-primary w-100">
+            <i class="bi bi-plus-lg me-1"></i>Adicionar
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <!-- Lista -->
+    {% if contrato.despesas_cobranca.all %}
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Data</th>
+          <th>Tipo</th>
+          <th>Descrição</th>
+          <th class="text-end">Valor</th>
+          <th>Por</th>
+          <th class="text-end">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in contrato.despesas_cobranca.all %}
+        <tr>
+          <td class="small">{{ d.data|date:"d/m/Y" }}</td>
+          <td><span class="badge bg-secondary">{{ d.get_tipo_display }}</span></td>
+          <td class="small">{{ d.descricao|default:"-" }}</td>
+          <td class="text-end fw-bold small">R$ {{ d.valor|floatformat:2 }}</td>
+          <td class="small text-muted">{{ d.registrado_por.get_full_name|default:"-" }}</td>
+          <td class="text-end">
+            {% if d.comprovante %}
+            <a href="{{ d.comprovante.url }}" target="_blank" class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-eye"></i></a>
+            {% endif %}
+            <a href="{% url 'cobranca:despesa_excluir' d.id %}" class="btn btn-sm btn-outline-danger py-0"
+               onclick="return confirm('Excluir?')"><i class="bi bi-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted text-center small mb-0">Nenhuma despesa registrada.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.desp-brl').forEach(function(el){
+  el.addEventListener('input', function(){
+    var v = el.value.replace(/\D/g, '');
+    if(v === '') { el.value = ''; return; }
+    var num = parseInt(v, 10);
+    var reais = (num / 100).toFixed(2);
+    var parts = reais.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    el.value = parts.join(',');
+  });
+  el.addEventListener('keypress', function(e){
+    if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault();
+  });
+});
+</script>
 
 {# --- MODAL DE PAGAMENTO --- #}
 <div class="modal fade" id="modalPagarParcela" tabindex="-1" aria-hidden="true">

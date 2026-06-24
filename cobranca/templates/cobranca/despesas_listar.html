@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-cash-stack me-2"></i>Despesas de Cobrança</h4>
+  <span class="badge bg-dark fs-6">Total: R$ {{ total|floatformat:2 }}</span>
+</div>
+
+<!-- FILTROS -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="d-flex gap-2 align-items-end">
+      <div class="flex-grow-1">
+        <input type="text" name="q" class="form-control form-control-sm" value="{{ busca }}"
+               placeholder="Nome, CPF ou nº contrato...">
+      </div>
+      <div>
+        <select name="tipo" class="form-select form-select-sm" style="width:180px;">
+          <option value="">Todos os tipos</option>
+          {% for val, label in tipos %}
+          <option value="{{ val }}" {% if tipo_filtro == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <select name="mes" class="form-select form-select-sm" style="width:80px;">
+          <option value="">Mês</option>
+          {% for m in "123456789" %}<option value="{{ m }}" {% if mes == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+          <option value="10" {% if mes == "10" %}selected{% endif %}>10</option>
+          <option value="11" {% if mes == "11" %}selected{% endif %}>11</option>
+          <option value="12" {% if mes == "12" %}selected{% endif %}>12</option>
+        </select>
+      </div>
+      <div>
+        <input type="number" name="ano" class="form-control form-control-sm" value="{{ ano }}" style="width:80px;" placeholder="Ano">
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search"></i></button>
+      <a href="{% url 'cobranca:despesas_listar' %}" class="btn btn-sm btn-outline-secondary">Limpar</a>
+    </form>
+  </div>
+</div>
+
+<!-- TABELA -->
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Data</th>
+          <th>Contrato</th>
+          <th>Cliente</th>
+          <th>Tipo</th>
+          <th>Descrição</th>
+          <th class="text-end">Valor</th>
+          <th>Registrado por</th>
+          <th class="text-end">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in despesas %}
+        <tr>
+          <td class="small">{{ d.data|date:"d/m/Y" }}</td>
+          <td class="small fw-semibold">
+            <a href="{% url 'emprestimos:contrato_detalhe' d.emprestimo.id %}">{{ d.emprestimo.codigo_contrato }}</a>
+          </td>
+          <td class="small">{{ d.emprestimo.cliente.nome_completo }}</td>
+          <td><span class="badge bg-secondary">{{ d.get_tipo_display }}</span></td>
+          <td class="small">{{ d.descricao|default:"-" }}</td>
+          <td class="text-end fw-bold small">R$ {{ d.valor|floatformat:2 }}</td>
+          <td class="small text-muted">{{ d.registrado_por.get_full_name|default:d.registrado_por.username|default:"-" }}</td>
+          <td class="text-end">
+            {% if d.comprovante %}
+            <a href="{{ d.comprovante.url }}" target="_blank" class="btn btn-sm btn-outline-primary py-0">
+              <i class="bi bi-file-earmark"></i>
+            </a>
+            {% endif %}
+            <a href="{% url 'cobranca:despesa_excluir' d.id %}" class="btn btn-sm btn-outline-danger py-0"
+               onclick="return confirm('Excluir esta despesa?')"><i class="bi bi-trash"></i></a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Nenhuma despesa registrada.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

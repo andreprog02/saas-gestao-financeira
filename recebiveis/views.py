@@ -141,8 +141,10 @@ def ativar_contrato(request, contrato_id):
     if request.method == 'POST':
         form = AtivacaoForm(request.POST)
         if form.is_valid():
-            # Verifica senha administrativa (ajuste conforme sua config)
-            if form.cleaned_data['senha'] == '1234':
+            # Verifica senha do usuário
+            from django.contrib.auth import authenticate
+            user = authenticate(username=request.user.username, password=form.cleaned_data['senha'])
+            if user:
                 
                 saque_inicial = form.cleaned_data.get('saque_inicial') or Decimal('0.00')
                 

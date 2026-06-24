@@ -4,6 +4,7 @@ from dateutil.relativedelta import relativedelta
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate
 from django.utils import timezone
 from django.http import JsonResponse
 from django.contrib import messages
@@ -113,12 +114,16 @@ def contrato_detalhe(request, pk):
         proposta__emprestimo_gerado=contrato
     ).first()
 
+    # Posição de dívida atualizada
+    posicao = contrato.posicao_divida if contrato.status in ("ATIVO", "ATRASADO") else None
+
     return render(request, "emprestimos/contrato_detalhe.html", {
         "contrato": contrato,
         "parcelas": parcelas,
         "todos_clientes": todos_clientes,
         "hoje": timezone.localdate(),
         "contrato_formal": contrato_formal,
+        "posicao": posicao,
     })
 
 @login_required
@@ -159,7 +164,8 @@ def pagar_parcela(request, pk):
     if request.method == "POST":
         senha = request.POST.get("senha")
         
-        if senha != "1234":
+        user = authenticate(username=request.user.username, password=senha)
+        if not user:
              messages.error(request, "Senha incorreta. Operação cancelada.")
              return redirect('emprestimos:contrato_detalhe', pk=contrato.id)
 
@@ -368,7 +374,8 @@ def cancelar_contrato(request, pk):
     contrato = get_object_or_404(Emprestimo, pk=pk)
     if request.method == "POST":
         senha = request.POST.get("senha")
-        if senha == "1234":
+        user = authenticate(username=request.user.username, password=senha)
+        if user:
             with transaction.atomic():
                 contrato.status = EmprestimoStatus.CANCELADO
                 contrato.cancelado_em = timezone.now()
@@ -677,3 +684,41 @@ def reimprimir_promissoria_pdf(request, contrato_f_id):
 
     cf = get_object_or_404(ContratoFormalizado, id=contrato_f_id)
     return emitir_promissoria_pdf(request, cf.proposta_id)
+
+
+@login_required
+def posicao_cliente(request, cliente_id):
+    """Posição de dívida consolidada de um cliente em todos os contratos."""
+    from clientes.models import Cliente
+
+    cliente = get_object_or_404(Cliente, id=cliente_id)
+    contratos = Emprestimo.objects.filter(
+        cliente=cliente, status__in=["ATIVO", "ATRASADO"]
+    ).prefetch_related("parcelas")
+
+    posicoes = []
+    total_geral = {
+        "original": Decimal("0.00"),
+        "multa": Decimal("0.00"),
+        "juros": Decimal("0.00"),
+        "atualizado": Decimal("0.00"),
+        "encargos": Decimal("0.00"),
+        "qtd_vencidas": 0,
+    }
+
+    for c in contratos:
+        pos = c.posicao_divida
+        posicoes.append({"contrato": c, "posicao": pos})
+        total_geral["original"] += pos["total_original"]
+        total_geral["multa"] += pos["total_multa"]
+        total_geral["juros"] += pos["total_juros"]
+        total_geral["atualizado"] += pos["total_atualizado"]
+        total_geral["encargos"] += pos["total_encargos"]
+        total_geral["qtd_vencidas"] += pos["qtd_vencidas"]
+
+    return render(request, "emprestimos/posicao_cliente.html", {
+        "cliente": cliente,
+        "posicoes": posicoes,
+        "total_geral": total_geral,
+        "hoje": timezone.localdate(),
+    })

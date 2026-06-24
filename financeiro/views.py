@@ -185,7 +185,9 @@ def estornar(request, transacao_id):
     # (Mantém a mesma lógica de estorno que você já tem ou a do exemplo anterior)
     if request.method == "POST":
         senha = request.POST.get('senha')
-        if senha == getattr(settings, 'MANAGER_PASSWORD', '1234'):
+        from django.contrib.auth import authenticate
+        user = authenticate(username=request.user.username, password=senha)
+        if user:
             original = get_object_or_404(Transacao, id=transacao_id)
             if Transacao.objects.filter(transacao_original=original).exists():
                 messages.error(request, "Já estornado.")

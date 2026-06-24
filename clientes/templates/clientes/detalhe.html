@@ -9,6 +9,9 @@
             <a href="{% url 'clientes:editar' cliente.id %}" class="btn btn-warning">
                 <i class="fas fa-edit"></i> Editar
             </a>
+            <a href="{% url 'emprestimos:posicao_cliente' cliente.id %}" class="btn btn-info">
+                <i class="bi bi-calculator"></i> Posição de Dívida
+            </a>
             
             <a href="{% url 'clientes:cliente_list' %}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Voltar

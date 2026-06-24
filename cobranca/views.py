@@ -1,7 +1,8 @@
+from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.utils import timezone
-from django.db.models import Min, Sum, Count
+from django.db.models import Min, Sum, Count, Q
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 
@@ -541,3 +542,116 @@ def reimprimir_carta(request, carta_id):
 
     doc.build(elements)
     return response
+
+
+# ==============================================================================
+# DESPESAS DE COBRANÇA
+# ==============================================================================
+
+@login_required
+def listar_despesas(request):
+    """Lista todas as despesas de cobrança com filtros."""
+    from .models import DespesaCobranca
+    from django.db.models import Sum
+    from datetime import date
+
+    despesas = DespesaCobranca.objects.select_related(
+        "emprestimo__cliente", "registrado_por"
+    ).order_by("-data")
+
+    # Filtros
+    busca = request.GET.get("q", "")
+    if busca:
+        despesas = despesas.filter(
+            Q(emprestimo__cliente__nome_completo__icontains=busca) |
+            Q(emprestimo__codigo_contrato__icontains=busca) |
+            Q(descricao__icontains=busca)
+        )
+
+    tipo_filtro = request.GET.get("tipo", "")
+    if tipo_filtro:
+        despesas = despesas.filter(tipo=tipo_filtro)
+
+    mes = request.GET.get("mes", "")
+    ano = request.GET.get("ano", str(date.today().year))
+    if mes and ano:
+        despesas = despesas.filter(data__month=int(mes), data__year=int(ano))
+    elif ano:
+        despesas = despesas.filter(data__year=int(ano))
+
+    total = despesas.aggregate(s=Sum("valor"))["s"] or Decimal("0.00")
+
+    return render(request, "cobranca/despesas_listar.html", {
+        "despesas": despesas[:100],
+        "total": total,
+        "busca": busca,
+        "tipo_filtro": tipo_filtro,
+        "tipos": DespesaCobranca.TIPO_CHOICES,
+        "mes": mes,
+        "ano": ano,
+    })
+
+
+@login_required
+def adicionar_despesa(request, emprestimo_id):
+    """Adiciona despesa de cobrança a um contrato."""
+    from .models import DespesaCobranca
+
+    emprestimo = get_object_or_404(Emprestimo, id=emprestimo_id)
+
+    if request.method == "POST":
+        tipo = request.POST.get("tipo", "OUTROS")
+        descricao = request.POST.get("descricao", "").strip()
+        valor_str = request.POST.get("valor", "0")
+        data = request.POST.get("data", "")
+        comprovante = request.FILES.get("comprovante")
+
+        # Parse valor BRL
+        limpo = valor_str.replace("R$", "").replace(" ", "").strip()
+        if "," in limpo and "." in limpo:
+            limpo = limpo.replace(".", "").replace(",", ".")
+        elif "," in limpo:
+            limpo = limpo.replace(",", ".")
+
+        try:
+            valor = Decimal(limpo)
+        except Exception:
+            messages.error(request, "Valor inválido.")
+            return redirect("emprestimos:contrato_detalhe", pk=emprestimo.id)
+
+        DespesaCobranca.objects.create(
+            emprestimo=emprestimo,
+            tipo=tipo,
+            descricao=descricao,
+            valor=valor,
+            data=data or timezone.localdate(),
+            comprovante=comprovante,
+            registrado_por=request.user,
+        )
+
+        # Registra no histórico
+        HistoricoCobranca.objects.create(
+            cliente=emprestimo.cliente,
+            emprestimo=emprestimo,
+            usuario=request.user,
+            descricao=f"Despesa de cobrança: {dict(DespesaCobranca.TIPO_CHOICES).get(tipo, tipo)} — R$ {valor:.2f}",
+        )
+
+        messages.success(request, f"Despesa de R$ {valor:.2f} registrada no contrato {emprestimo.codigo_contrato}.")
+        return redirect("emprestimos:contrato_detalhe", pk=emprestimo.id)
+
+    return redirect("emprestimos:contrato_detalhe", pk=emprestimo.id)
+
+
+@login_required
+def excluir_despesa(request, despesa_id):
+    """Exclui uma despesa de cobrança."""
+    from .models import DespesaCobranca
+
+    despesa = get_object_or_404(DespesaCobranca, id=despesa_id)
+    contrato_id = despesa.emprestimo_id
+    if despesa.comprovante:
+        despesa.comprovante.delete(save=False)
+    despesa.delete()
+    messages.info(request, "Despesa excluída.")
+    return redirect("emprestimos:contrato_detalhe", pk=contrato_id)

@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.db.models import Sum, Q
 
 from .models import ContaPagar
+from core.validators import validar_upload
 
 
 def _parse_valor_brl(valor_str):
@@ -105,6 +106,13 @@ def cadastrar(request):
             vencimento = request.POST.get("vencimento", "")
             observacoes = request.POST.get("observacoes", "")
             fatura = request.FILES.get("fatura")
+
+            if fatura:
+                try:
+                    validar_upload(fatura)
+                except Exception as e:
+                    messages.error(request, str(e))
+                    return render(request, "contas_pagar/cadastrar.html", {"tipos": ContaPagar.TipoDespesa.choices})
 
             if not descricao:
                 raise ValueError("Informe a descrição da conta.")
