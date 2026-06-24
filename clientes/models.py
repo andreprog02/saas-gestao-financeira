@@ -40,10 +40,15 @@ class Cliente(models.Model):
         "Renda Mensal (R$)", max_digits=12, decimal_places=2,
         null=True, blank=True,
     )
+    outros_rendimentos = models.DecimalField(
+        "Outros Rendimentos (R$)", max_digits=12, decimal_places=2,
+        null=True, blank=True,
+    )
     estado_civil = models.CharField(
         "Estado Civil", max_length=15,
         choices=ESTADO_CIVIL_CHOICES, blank=True, default="",
     )
+    email = models.EmailField("E-mail", max_length=120, blank=True, default="")
     # ==================================
 
     cep = models.CharField(
