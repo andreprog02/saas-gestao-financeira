@@ -252,6 +252,128 @@
   <!-- COLUNA DIREITA: documentos + dossiê + comitê + timeline -->
   <div class="col-lg-5">
 
+    <!-- ANÁLISE DE RENDA E COMPROMETIMENTO (Análise de Crédito e Comitê) -->
+    {% if analise_renda %}
+    <div class="card shadow-sm mb-3 border-primary">
+      <div class="card-header py-2 bg-primary bg-opacity-25">
+        <strong><i class="bi bi-graph-up me-1"></i>Análise de Renda e Comprometimento</strong>
+      </div>
+      <div class="card-body small">
+
+        <!-- RENDA -->
+        <h6 class="fw-bold text-muted mb-2">Renda Declarada</h6>
+        <table class="table table-sm mb-3">
+          {% if analise_renda.renda_bruta %}
+          <tr>
+            <td class="text-muted">Renda Bruta (comprovante {{ analise_renda.ref_comprovante|default:"" }})</td>
+            <td class="text-end fw-bold">R$ {{ analise_renda.renda_bruta|floatformat:2 }}</td>
+          </tr>
+          {% endif %}
+          {% if analise_renda.renda_liquida %}
+          <tr>
+            <td class="text-muted">Renda Líquida (comprovante {{ analise_renda.ref_comprovante|default:"" }})</td>
+            <td class="text-end fw-bold">R$ {{ analise_renda.renda_liquida|floatformat:2 }}</td>
+          </tr>
+          {% endif %}
+          {% if analise_renda.renda_cadastro %}
+          <tr>
+            <td class="text-muted">Renda Mensal (cadastro)</td>
+            <td class="text-end fw-bold">R$ {{ analise_renda.renda_cadastro|floatformat:2 }}</td>
+          </tr>
+          {% endif %}
+          {% if analise_renda.outros_rendimentos %}
+          <tr>
+            <td class="text-muted">Outros Rendimentos</td>
+            <td class="text-end fw-bold">R$ {{ analise_renda.outros_rendimentos|floatformat:2 }}</td>
+          </tr>
+          {% endif %}
+          {% if not analise_renda.renda_bruta and not analise_renda.renda_liquida and not analise_renda.renda_cadastro %}
+          <tr><td colspan="2" class="text-center text-danger">Nenhuma renda informada</td></tr>
+          {% endif %}
+        </table>
+
+        <!-- COMPROMETIMENTO -->
+        <h6 class="fw-bold text-muted mb-2">Comprometimento da Renda</h6>
+        <div class="mb-2">
+          <span class="text-muted">Parcela desta proposta:</span>
+          <strong class="text-primary ms-1">R$ {{ analise_renda.parcela|floatformat:2 }}</strong>
+        </div>
+
+        {% if analise_renda.comp_bruto %}
+        <div class="d-flex align-items-center mb-2">
+          <span class="text-muted me-2" style="min-width:120px;">% da Renda Bruta:</span>
+          <div class="progress flex-grow-1 me-2" style="height:20px;">
+            <div class="progress-bar {% if analise_renda.comp_bruto > 35 %}bg-danger{% elif analise_renda.comp_bruto > 25 %}bg-warning{% else %}bg-success{% endif %}"
+                 style="width: {% if analise_renda.comp_bruto > 100 %}100{% else %}{{ analise_renda.comp_bruto }}{% endif %}%;">
+              {{ analise_renda.comp_bruto }}%
+            </div>
+          </div>
+          {% if analise_renda.comp_bruto > 35 %}
+            <span class="badge bg-danger">Alto</span>
+          {% elif analise_renda.comp_bruto > 25 %}
+            <span class="badge bg-warning text-dark">Médio</span>
+          {% else %}
+            <span class="badge bg-success">OK</span>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if analise_renda.comp_liquido %}
+        <div class="d-flex align-items-center mb-2">
+          <span class="text-muted me-2" style="min-width:120px;">% da Renda Líquida:</span>
+          <div class="progress flex-grow-1 me-2" style="height:20px;">
+            <div class="progress-bar {% if analise_renda.comp_liquido > 40 %}bg-danger{% elif analise_renda.comp_liquido > 30 %}bg-warning{% else %}bg-success{% endif %}"
+                 style="width: {% if analise_renda.comp_liquido > 100 %}100{% else %}{{ analise_renda.comp_liquido }}{% endif %}%;">
+              {{ analise_renda.comp_liquido }}%
+            </div>
+          </div>
+          {% if analise_renda.comp_liquido > 40 %}
+            <span class="badge bg-danger">Alto</span>
+          {% elif analise_renda.comp_liquido > 30 %}
+            <span class="badge bg-warning text-dark">Médio</span>
+          {% else %}
+            <span class="badge bg-success">OK</span>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if analise_renda.comp_cadastro and not analise_renda.comp_bruto %}
+        <div class="d-flex align-items-center mb-2">
+          <span class="text-muted me-2" style="min-width:120px;">% Renda Cadastro:</span>
+          <div class="progress flex-grow-1 me-2" style="height:20px;">
+            <div class="progress-bar {% if analise_renda.comp_cadastro > 35 %}bg-danger{% elif analise_renda.comp_cadastro > 25 %}bg-warning{% else %}bg-success{% endif %}"
+                 style="width: {% if analise_renda.comp_cadastro > 100 %}100{% else %}{{ analise_renda.comp_cadastro }}{% endif %}%;">
+              {{ analise_renda.comp_cadastro }}%
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- BENS -->
+        {% if analise_renda.bens_moveis or analise_renda.bens_imoveis %}
+        <h6 class="fw-bold text-muted mb-2 mt-3">Patrimônio</h6>
+        {% if analise_renda.bens_moveis %}
+        <div class="mb-2">
+          <span class="text-muted fw-semibold"><i class="bi bi-truck me-1"></i>Veículos:</span>
+          {% for bm in analise_renda.bens_moveis %}
+            <br><span class="ms-3">· {{ bm.get_tipo_display }} — {{ bm.descricao }} {% if bm.placa %}({{ bm.placa }}){% endif %}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if analise_renda.bens_imoveis %}
+        <div>
+          <span class="text-muted fw-semibold"><i class="bi bi-house-door me-1"></i>Imóveis:</span>
+          {% for bi in analise_renda.bens_imoveis %}
+            <br><span class="ms-3">· {{ bi.get_tipo_display }} — {{ bi.endereco_completo }} {% if bi.matricula %}(Mat: {{ bi.matricula }}){% endif %}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% endif %}
+
+      </div>
+    </div>
+    {% endif %}
+
     <!-- DOCUMENTOS DO CLIENTE -->
     {% if etapa_ativa.etapa == 'DOCUMENTACAO' or etapa_ativa.etapa == 'ANALISE_CREDITO' or etapa_ativa.etapa == 'COMITE' or etapa_ativa.etapa == 'FORMALIZACAO' %}
     <div class="card shadow-sm mb-3">

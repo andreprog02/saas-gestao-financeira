@@ -399,14 +399,64 @@ def detalhe_proposta(request, proposta_id):
         if etapa_form:
             checklist_formalizacao = etapa_form.checklist.all()
 
-    # Contrato formalizado (se estiver na FORMALIZACAO)
-    contrato_formal = ContratoFormalizado.objects.filter(proposta=proposta).first()
-     # Checklist da formalização para exibir na liberação
-    checklist_formalizacao = []
-    if etapa_ativa and etapa_ativa.etapa == "LIBERACAO":
-        etapa_form = todas_etapas.filter(etapa="FORMALIZACAO", resultado="APROVADO").last()
-        if etapa_form:
-            checklist_formalizacao = etapa_form.checklist.all()
+    # === ANÁLISE DE RENDA E COMPROMETIMENTO ===
+    analise_renda = None
+    is_analise_ou_comite = etapa_ativa and etapa_ativa.etapa in ("ANALISE_CREDITO", "COMITE")
+    if is_analise_ou_comite:
+        cli = proposta.cliente
+        from clientes.models import DocumentoCliente
+
+        # Busca último comprovante de renda
+        ultimo_comp = DocumentoCliente.objects.filter(
+            cliente=cli, tipo="COMP_RENDA"
+        ).order_by("-ano_referencia", "-mes_referencia").first()
+
+        renda_bruta = ultimo_comp.renda_bruta if ultimo_comp and ultimo_comp.renda_bruta else None
+        renda_liquida = ultimo_comp.renda_liquida if ultimo_comp and ultimo_comp.renda_liquida else None
+        renda_cadastro = cli.renda_mensal
+        outros = cli.outros_rendimentos
+
+        # Simulação da parcela
+        _, parc_aplicada, _, _, _ = simular(
+            valor_emprestado=proposta.valor_solicitado,
+            qtd_parcelas=proposta.qtd_parcelas,
+            taxa_juros_mensal=proposta.taxa_juros,
+            primeiro_vencimento=proposta.primeiro_vencimento,
+        )
+
+        # Cálculo de comprometimento
+        comp_bruto = None
+        comp_liquido = None
+        comp_cadastro = None
+        if renda_bruta and renda_bruta > 0:
+            comp_bruto = (parc_aplicada / renda_bruta * Decimal("100")).quantize(Decimal("0.1"))
+        if renda_liquida and renda_liquida > 0:
+            comp_liquido = (parc_aplicada / renda_liquida * Decimal("100")).quantize(Decimal("0.1"))
+        if renda_cadastro and renda_cadastro > 0:
+            comp_cadastro = (parc_aplicada / renda_cadastro * Decimal("100")).quantize(Decimal("0.1"))
+
+        # Bens do cliente
+        bens_moveis = cli.bens_moveis.all()
+        bens_imoveis = cli.bens_imoveis.all()
+
+        # Referência do comprovante
+        ref_comp = None
+        if ultimo_comp and ultimo_comp.mes_referencia:
+            ref_comp = f"{ultimo_comp.mes_referencia}/{ultimo_comp.ano_referencia}"
+
+        analise_renda = {
+            "renda_bruta": renda_bruta,
+            "renda_liquida": renda_liquida,
+            "renda_cadastro": renda_cadastro,
+            "outros_rendimentos": outros,
+            "ref_comprovante": ref_comp,
+            "parcela": parc_aplicada,
+            "comp_bruto": comp_bruto,
+            "comp_liquido": comp_liquido,
+            "comp_cadastro": comp_cadastro,
+            "bens_moveis": bens_moveis,
+            "bens_imoveis": bens_imoveis,
+        }
 
     return render(request, "emprestimos/esteira/detalhe.html", {
         "proposta": proposta,
@@ -423,7 +473,6 @@ def detalhe_proposta(request, proposta_id):
         "ja_votou": ja_votou,
         "is_comite": is_comite,
         "cliente_completo": cliente_completo,
-        "docs_tipos": DocumentoCliente.TIPO_CHOICES,
         "contratos_abertos": contratos_abertos,
         "historico_pagamentos": historico_pagamentos,
         "docs_tipos": DocumentoCliente.TIPO_CHOICES,
@@ -431,6 +480,8 @@ def detalhe_proposta(request, proposta_id):
         "is_formalizacao": is_formalizacao,
         "garantias": garantias,
         "checklist_formalizacao": checklist_formalizacao,
+        "analise_renda": analise_renda,
+        "is_analise_ou_comite": is_analise_ou_comite,
     })
 
 
