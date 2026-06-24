@@ -204,15 +204,11 @@ def nova_proposta(request):
 
                 # Garantias
                 # Cheques
-                cheque_numero = request.POST.get("cheque_numero", "").strip()
-                if cheque_numero:
-                    cheque_valor_str = request.POST.get("cheque_valor", "0").replace(".", "").replace(",", ".")
+                tem_cheque = request.POST.get("tem_cheque", "nao")
+                if tem_cheque == "sim":
                     GarantiaProposta.objects.create(
                         proposta=proposta,
                         tipo="CHEQUE",
-                        cheque_banco=request.POST.get("cheque_banco", ""),
-                        cheque_numero=cheque_numero,
-                        cheque_valor=Decimal(cheque_valor_str) if cheque_valor_str else None,
                     )
 
                 # Avalistas

@@ -172,19 +172,6 @@
                         <label class="form-check-label small" for="cheque-nao">Não</label>
                       </div>
                     </div>
-                    <div id="cheque-campos" style="display:none;" class="mt-2">
-                      <div class="row g-1">
-                        <div class="col-4">
-                          <input type="text" name="cheque_banco" class="form-control form-control-sm" placeholder="Banco">
-                        </div>
-                        <div class="col-4">
-                          <input type="text" name="cheque_numero" class="form-control form-control-sm" placeholder="Nº Cheque">
-                        </div>
-                        <div class="col-4">
-                          <input type="text" name="cheque_valor" class="form-control form-control-sm" placeholder="Valor">
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   <!-- AVALISTA -->
@@ -286,11 +273,6 @@ $(document).ready(function() {
       if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault();
     });
   })();
-
-  /* === CHEQUE RADIO TOGGLE === */
-  $('input[name="tem_cheque"]').on('change', function(){
-    $('#cheque-campos').toggle($(this).val() === 'sim');
-  });
 
   /* === AVALISTA MODAL === */
   // Busca
