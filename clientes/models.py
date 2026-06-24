@@ -288,3 +288,62 @@ class ContaCorrente(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_display()} - R$ {self.valor} ({self.data.strftime('%d/%m/%Y')})"
+
+class ConsultaCredito(models.Model):
+    """Consulta a órgãos de crédito (SPC/Serasa) do cliente."""
+
+    STATUS_CHOICES = [
+        ("NADA_CONSTA", "Nada Consta"),
+        ("ALERTA", "Alerta"),
+        ("COM_RESTRICAO", "Com Restrições"),
+    ]
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="consultas_credito")
+    documento = models.ForeignKey(
+        DocumentoCliente, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="consulta_credito_vinculada",
+        help_text="Documento de consulta vinculado (upload do PDF/imagem)",
+    )
+    status = models.CharField("Resultado", max_length=15, choices=STATUS_CHOICES)
+    data_consulta = models.DateField("Data da Consulta", auto_now_add=True)
+    observacoes = models.TextField("Observações", blank=True, default="")
+
+    registrado_por = models.ForeignKey(
+        'usuarios.Usuario', on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+        verbose_name = "Consulta de Crédito"
+        verbose_name_plural = "Consultas de Crédito"
+
+    def __str__(self):
+        return f"{self.cliente.nome_completo} — {self.get_status_display()} ({self.data_consulta})"
+
+    @property
+    def status_cor(self):
+        return {"NADA_CONSTA": "success", "ALERTA": "warning", "COM_RESTRICAO": "danger"}.get(self.status, "secondary")
+
+    @property
+    def total_restricoes(self):
+        return self.restricoes.aggregate(s=models.Sum("valor"))["s"] or 0
+
+
+class RestricaoCredito(models.Model):
+    """Restrição encontrada na consulta de crédito."""
+
+    consulta = models.ForeignKey(ConsultaCredito, on_delete=models.CASCADE, related_name="restricoes")
+    cnpj_credor = models.CharField("CNPJ do Credor", max_length=18, blank=True, default="")
+    nome_credor = models.CharField("Nome da Empresa", max_length=150, blank=True, default="")
+    valor = models.DecimalField("Valor (R$)", max_digits=12, decimal_places=2, default=0)
+    descricao = models.CharField("Descrição", max_length=200, blank=True, default="")
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-valor"]
+        verbose_name = "Restrição"
+        verbose_name_plural = "Restrições"
+
+    def __str__(self):
+        return f"{self.nome_credor} — R$ {self.valor}"

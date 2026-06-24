@@ -401,10 +401,16 @@ def detalhe_proposta(request, proposta_id):
 
     # === ANÁLISE DE RENDA E COMPROMETIMENTO ===
     analise_renda = None
+    consulta_credito = None
     is_analise_ou_comite = etapa_ativa and etapa_ativa.etapa in ("ANALISE_CREDITO", "COMITE")
     if is_analise_ou_comite:
         cli = proposta.cliente
-        from clientes.models import DocumentoCliente
+        from clientes.models import DocumentoCliente, ConsultaCredito
+
+        # Última consulta de crédito
+        consulta_credito = ConsultaCredito.objects.filter(
+            cliente=cli
+        ).prefetch_related("restricoes", "documento").order_by("-criado_em").first()
 
         # Busca último comprovante de renda
         ultimo_comp = DocumentoCliente.objects.filter(
@@ -482,6 +488,7 @@ def detalhe_proposta(request, proposta_id):
         "checklist_formalizacao": checklist_formalizacao,
         "analise_renda": analise_renda,
         "is_analise_ou_comite": is_analise_ou_comite,
+        "consulta_credito": consulta_credito,
     })
 
 

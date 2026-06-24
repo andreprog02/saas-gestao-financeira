@@ -33,4 +33,8 @@ urlpatterns = [
 
     # Doc de bem (genérico)
     path("doc-bem/<int:doc_id>/excluir/", views.excluir_doc_bem, name="excluir_doc_bem"),
+
+    # Consulta de Crédito
+    path("<int:cliente_id>/consulta-credito/", views.adicionar_consulta_credito, name="adicionar_consulta_credito"),
+    path("consulta-credito/<int:consulta_id>/excluir/", views.excluir_consulta_credito, name="excluir_consulta_credito"),
 ]

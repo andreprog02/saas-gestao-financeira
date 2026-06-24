@@ -374,6 +374,62 @@
     </div>
     {% endif %}
 
+    <!-- CONSULTA DE CRÉDITO (Análise e Comitê) -->
+    {% if consulta_credito %}
+    <div class="card shadow-sm mb-3 border-{{ consulta_credito.status_cor }}">
+      <div class="card-header py-2 bg-{{ consulta_credito.status_cor }} {% if consulta_credito.status != 'ALERTA' %}text-white{% endif %}">
+        <strong><i class="bi bi-search me-1"></i>Consulta de Crédito</strong>
+        <span class="badge bg-white text-dark ms-1">{{ consulta_credito.criado_em|date:"d/m/Y" }}</span>
+      </div>
+      <div class="card-body small">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="badge bg-{{ consulta_credito.status_cor }} fs-6 px-3 py-2">
+            {% if consulta_credito.status == 'NADA_CONSTA' %}<i class="bi bi-check-circle me-1"></i>{% elif consulta_credito.status == 'ALERTA' %}<i class="bi bi-exclamation-triangle me-1"></i>{% else %}<i class="bi bi-x-circle me-1"></i>{% endif %}
+            {{ consulta_credito.get_status_display }}
+          </span>
+          {% if consulta_credito.documento %}
+          <a href="{{ consulta_credito.documento.arquivo.url }}" target="_blank" class="btn btn-sm btn-outline-primary py-0">
+            <i class="bi bi-eye me-1"></i>Ver Documento
+          </a>
+          {% endif %}
+        </div>
+
+        {% if consulta_credito.observacoes %}
+        <div class="mb-2 fst-italic text-muted">{{ consulta_credito.observacoes }}</div>
+        {% endif %}
+
+        {% if consulta_credito.restricoes.all %}
+        <table class="table table-sm table-bordered mb-0 mt-2">
+          <thead class="{% if consulta_credito.status == 'COM_RESTRICAO' %}table-danger{% else %}table-warning{% endif %}">
+            <tr><th>CNPJ</th><th>Empresa</th><th class="text-end">Valor</th><th>Descrição</th></tr>
+          </thead>
+          <tbody>
+            {% for r in consulta_credito.restricoes.all %}
+            <tr>
+              <td>{{ r.cnpj_credor|default:"-" }}</td>
+              <td class="fw-semibold">{{ r.nome_credor|default:"-" }}</td>
+              <td class="text-end fw-bold text-danger">R$ {{ r.valor|floatformat:2 }}</td>
+              <td>{{ r.descricao|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="{% if consulta_credito.status == 'COM_RESTRICAO' %}table-danger{% else %}table-warning{% endif %}">
+              <td colspan="2" class="fw-bold">Total Restrições</td>
+              <td class="text-end fw-bold">R$ {{ consulta_credito.total_restricoes|floatformat:2 }}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+    {% elif is_analise_ou_comite %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body py-3 text-center text-muted small">
+        <i class="bi bi-search me-1"></i>Nenhuma consulta de crédito registrada para este cliente.
+      </div>
+    </div>
+    {% endif %}
+
     <!-- DOCUMENTOS DO CLIENTE -->
     {% if etapa_ativa.etapa == 'DOCUMENTACAO' or etapa_ativa.etapa == 'ANALISE_CREDITO' or etapa_ativa.etapa == 'COMITE' or etapa_ativa.etapa == 'FORMALIZACAO' %}
     <div class="card shadow-sm mb-3">
@@ -821,7 +877,7 @@
         <form method="post" action="{% url 'emprestimos:esteira_votar' proposta.id %}">
           {% csrf_token %}
 
-          {% if pendencias_docs %}
+             {% if pendencias_docs %}
           <div class="alert alert-warning py-2 small">
             <strong>Pendências documentais:</strong>
             {% for p in pendencias_docs %}
@@ -833,6 +889,39 @@
           </div>
           {% endif %}
 
+          {% if consulta_credito and consulta_credito.status != 'NADA_CONSTA' %}
+          <div class="alert alert-{{ consulta_credito.status_cor }} py-2 small">
+            <strong>
+              {% if consulta_credito.status == 'ALERTA' %}
+                <i class="bi bi-exclamation-triangle me-1"></i>Alerta de Crédito — marque cada item confirmando ciência:
+              {% else %}
+                <i class="bi bi-x-circle me-1"></i>Restrições Financeiras — marque TODAS confirmando ciência:
+              {% endif %}
+            </strong>
+            {% for r in consulta_credito.restricoes.all %}
+              <div class="form-check mt-1">
+                <input class="form-check-input" type="checkbox" required id="ck-rest-{{ forloop.counter }}">
+                <label class="form-check-label" for="ck-rest-{{ forloop.counter }}">
+                  Ciente: <strong>{{ r.nome_credor|default:r.cnpj_credor }}</strong>
+                  {% if r.valor %} — R$ {{ r.valor|floatformat:2 }}{% endif %}
+                  {% if r.descricao %} ({{ r.descricao }}){% endif %}
+                </label>
+              </div>
+            {% endfor %}
+            {% if consulta_credito.observacoes and not consulta_credito.restricoes.all %}
+              <div class="form-check mt-1">
+                <input class="form-check-input" type="checkbox" required id="ck-rest-obs">
+                <label class="form-check-label" for="ck-rest-obs">
+                  Ciente: {{ consulta_credito.observacoes }}
+                </label>
+              </div>
+            {% endif %}
+            <div class="mt-2 fw-bold">
+              Total: R$ {{ consulta_credito.total_restricoes|floatformat:2 }}
+            </div>
+          </div>
+          {% endif %}
+          
           <div class="mb-2">
             <label class="form-label small fw-semibold">Observações do voto</label>
             <textarea name="observacoes_voto" class="form-control form-control-sm" rows="2"

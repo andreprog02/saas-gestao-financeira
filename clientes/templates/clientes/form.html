@@ -305,6 +305,145 @@
 </div>
 {% endif %}
 
+{# === CONSULTA DE CRÉDITO === #}
+{% if cliente %}
+<div class="card mt-4 shadow-sm">
+  <div class="card-header bg-dark text-white py-2">
+    <h5 class="mb-0"><i class="bi bi-search me-2"></i>Consulta de Crédito (SPC/Serasa)</h5>
+  </div>
+  <div class="card-body">
+
+    <!-- Formulário -->
+    <form method="post" action="{% url 'clientes:adicionar_consulta_credito' cliente.id %}" enctype="multipart/form-data" id="form-consulta">
+      {% csrf_token %}
+
+      <div class="row g-2 align-items-start mb-3">
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Resultado</label>
+          <div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="status_consulta" value="NADA_CONSTA" id="sc-nc" checked onchange="toggleConsulta()">
+              <label class="form-check-label small text-success fw-bold" for="sc-nc"><i class="bi bi-check-circle me-1"></i>Nada Consta</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="status_consulta" value="ALERTA" id="sc-al" onchange="toggleConsulta()">
+              <label class="form-check-label small text-warning fw-bold" for="sc-al"><i class="bi bi-exclamation-triangle me-1"></i>Alerta</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="status_consulta" value="COM_RESTRICAO" id="sc-re" onchange="toggleConsulta()">
+              <label class="form-check-label small text-danger fw-bold" for="sc-re"><i class="bi bi-x-circle me-1"></i>Com Restrições</label>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Documento da Consulta</label>
+          <input type="file" name="arquivo_consulta" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Observações</label>
+          <input type="text" name="observacoes_consulta" class="form-control form-control-sm" placeholder="Observações gerais...">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-sm btn-primary w-100 mt-3"><i class="bi bi-plus-lg me-1"></i>Registrar</button>
+        </div>
+      </div>
+
+      <!-- ALERTA -->
+      <div id="campos-alerta" style="display:none;" class="card bg-warning bg-opacity-10 p-3 mb-3">
+        <h6 class="text-warning fw-bold small mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Dados do Alerta</h6>
+        <div class="row g-2">
+          <div class="col-md-3">
+            <input type="text" name="alerta_cnpj" class="form-control form-control-sm cnpj-mask" placeholder="CNPJ do credor">
+          </div>
+          <div class="col-md-3">
+            <input type="text" name="alerta_valor" class="form-control form-control-sm brl-mask-cc" placeholder="Valor 0,00">
+          </div>
+          <div class="col-md-6">
+            <input type="text" name="alerta_descricao" class="form-control form-control-sm" placeholder="Descrição do alerta">
+          </div>
+        </div>
+      </div>
+
+      <!-- RESTRIÇÕES -->
+      <div id="campos-restricao" style="display:none;" class="card bg-danger bg-opacity-10 p-3 mb-3">
+        <h6 class="text-danger fw-bold small mb-2"><i class="bi bi-x-circle me-1"></i>Restrições</h6>
+        <div id="restricoes-container">
+          <div class="row g-2 mb-2 restricao-row">
+            <div class="col-md-3">
+              <input type="text" name="rest_cnpj_0" class="form-control form-control-sm cnpj-mask" placeholder="CNPJ do credor">
+            </div>
+            <div class="col-md-3">
+              <input type="text" name="rest_nome_0" class="form-control form-control-sm" placeholder="Nome da empresa">
+            </div>
+            <div class="col-md-2">
+              <input type="text" name="rest_valor_0" class="form-control form-control-sm brl-mask-cc" placeholder="Valor 0,00">
+            </div>
+            <div class="col-md-4">
+              <input type="text" name="rest_desc_0" class="form-control form-control-sm" placeholder="Descrição">
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="addRestricao()">
+          <i class="bi bi-plus-lg me-1"></i>Mais uma restrição
+        </button>
+      </div>
+    </form>
+
+    <!-- CONSULTAS REGISTRADAS -->
+    {% if consultas_credito %}
+    <hr>
+    <h6 class="fw-bold text-muted mb-2">Consultas Registradas</h6>
+    {% for cc in consultas_credito %}
+    <div class="card mb-2 border-start border-3 border-{{ cc.status_cor }}">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <span class="badge bg-{{ cc.status_cor }} fs-6">{{ cc.get_status_display }}</span>
+            <span class="small text-muted ms-2">{{ cc.criado_em|date:"d/m/Y H:i" }}</span>
+            {% if cc.registrado_por %}
+              <span class="small text-muted">· {{ cc.registrado_por.get_full_name|default:cc.registrado_por.username }}</span>
+            {% endif %}
+            {% if cc.observacoes %}<br><span class="small fst-italic">{{ cc.observacoes }}</span>{% endif %}
+          </div>
+          <div class="d-flex gap-1">
+            {% if cc.documento %}
+            <a href="{{ cc.documento.arquivo.url }}" target="_blank" class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-eye"></i></a>
+            {% endif %}
+            <a href="{% url 'clientes:excluir_consulta_credito' cc.id %}" class="btn btn-sm btn-outline-danger py-0"
+               onclick="return confirm('Excluir?')"><i class="bi bi-trash"></i></a>
+          </div>
+        </div>
+
+        {% if cc.restricoes.all %}
+        <table class="table table-sm mt-2 mb-0">
+          <thead class="table-light">
+            <tr><th>CNPJ</th><th>Empresa</th><th class="text-end">Valor</th><th>Descrição</th></tr>
+          </thead>
+          <tbody>
+            {% for r in cc.restricoes.all %}
+            <tr>
+              <td class="small">{{ r.cnpj_credor|default:"-" }}</td>
+              <td class="small fw-semibold">{{ r.nome_credor|default:"-" }}</td>
+              <td class="text-end small fw-bold text-danger">R$ {{ r.valor|floatformat:2 }}</td>
+              <td class="small">{{ r.descricao|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="table-danger">
+              <td colspan="2" class="fw-bold">Total</td>
+              <td class="text-end fw-bold">R$ {{ cc.total_restricoes|floatformat:2 }}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {# === SCRIPTS === #}
 <script>
 /* === MÁSCARA BRL (renda, outros rendimentos, docs) === */
@@ -387,7 +526,7 @@ document.querySelectorAll('.brl-mask').forEach(function(el){
   }
 })();
 
-/* === DOCUMENTOS: mostra/esconde campos por tipo === */
+/* Mostra/esconde campos condicionais por tipo de documento */
 (function(){
   var sel = document.getElementById('doc-tipo-select');
   var ref = document.getElementById('doc-ref-fields');
@@ -401,5 +540,60 @@ document.querySelectorAll('.brl-mask').forEach(function(el){
     });
   }
 })();
+
+/* === CONSULTA DE CRÉDITO === */
+function toggleConsulta(){
+  var s = document.querySelector('input[name="status_consulta"]:checked');
+  if(!s) return;
+  var v = s.value;
+  var al = document.getElementById('campos-alerta');
+  var re = document.getElementById('campos-restricao');
+  if(al) al.style.display = v === 'ALERTA' ? 'block' : 'none';
+  if(re) re.style.display = v === 'COM_RESTRICAO' ? 'block' : 'none';
+}
+
+var _restIdx = 1;
+function addRestricao(){
+  var c = document.getElementById('restricoes-container');
+  if(!c) return;
+  var html = '<div class="row g-2 mb-2 restricao-row">' +
+    '<div class="col-md-3"><input type="text" name="rest_cnpj_'+_restIdx+'" class="form-control form-control-sm cnpj-mask" placeholder="CNPJ"></div>' +
+    '<div class="col-md-3"><input type="text" name="rest_nome_'+_restIdx+'" class="form-control form-control-sm" placeholder="Empresa"></div>' +
+    '<div class="col-md-2"><input type="text" name="rest_valor_'+_restIdx+'" class="form-control form-control-sm brl-mask-cc" placeholder="0,00"></div>' +
+    '<div class="col-md-3"><input type="text" name="rest_desc_'+_restIdx+'" class="form-control form-control-sm" placeholder="Descrição"></div>' +
+    '<div class="col-md-1"><button type="button" class="btn btn-sm btn-outline-danger py-0" onclick="this.closest(\'.restricao-row\').remove()"><i class="bi bi-x"></i></button></div></div>';
+  c.insertAdjacentHTML('beforeend', html);
+  _restIdx++;
+  bindMasksCC();
+}
+
+function bindMasksCC(){
+  document.querySelectorAll('.brl-mask-cc').forEach(function(el){
+    if(el.dataset.bound) return;
+    el.dataset.bound = '1';
+    el.addEventListener('input', function(){
+      var v = el.value.replace(/\D/g, '');
+      if(!v){ el.value = ''; return; }
+      var n = parseInt(v,10), r = (n/100).toFixed(2), p = r.split('.');
+      p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      el.value = p.join(',');
+    });
+    el.addEventListener('keypress', function(e){ if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault(); });
+  });
+  document.querySelectorAll('.cnpj-mask').forEach(function(el){
+    if(el.dataset.bound) return;
+    el.dataset.bound = '1';
+    el.addEventListener('input', function(){
+      var v = el.value.replace(/\D/g, '');
+      if(v.length > 2) v = v.slice(0,2)+'.'+v.slice(2);
+      if(v.length > 6) v = v.slice(0,6)+'.'+v.slice(6);
+      if(v.length > 10) v = v.slice(0,10)+'/'+v.slice(10);
+      if(v.length > 15) v = v.slice(0,15)+'-'+v.slice(15);
+      el.value = v.slice(0,18);
+    });
+    el.addEventListener('keypress', function(e){ if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault(); });
+  });
+}
+bindMasksCC();
 </script>
 {% endblock %}

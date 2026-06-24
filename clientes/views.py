@@ -9,7 +9,7 @@ from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
 
 from .forms import ClienteForm
-from .models import Cliente, DocumentoCliente, BemMovel, BemImovel, DocumentoBem
+from .models import Cliente, DocumentoCliente, BemMovel, BemImovel, DocumentoBem, ConsultaCredito, RestricaoCredito
 from contas.models import ContaCorrente
 from core.validators import validar_upload
 
@@ -63,6 +63,7 @@ def clientes_editar(request, cliente_id: int):
     tipos_doc = DocumentoCliente.TIPO_CHOICES
     bens_moveis = cliente.bens_moveis.all()
     bens_imoveis = cliente.bens_imoveis.all()
+    consultas_credito = cliente.consultas_credito.prefetch_related("restricoes", "documento").all()
 
     return render(request, "clientes/form.html", {
         "form": form,
@@ -74,6 +75,7 @@ def clientes_editar(request, cliente_id: int):
         "bens_imoveis": bens_imoveis,
         "tipos_movel": BemMovel.TIPO_CHOICES,
         "tipos_imovel": BemImovel.TIPO_CHOICES,
+        "consultas_credito": consultas_credito,
     })
 
 
@@ -373,4 +375,101 @@ def excluir_doc_bem(request, doc_id):
     doc.arquivo.delete(save=False)
     doc.delete()
     messages.info(request, "Documento excluído.")
+    return redirect("clientes:editar", cliente_id=cliente_id)
+
+
+# ==============================================================================
+# CONSULTA DE CRÉDITO
+# ==============================================================================
+
+@login_required
+def adicionar_consulta_credito(request, cliente_id):
+    """Cadastra consulta de crédito com status e restrições."""
+    from decimal import Decimal, InvalidOperation
+
+    cliente = get_object_or_404(Cliente, id=cliente_id)
+
+    if request.method == "POST":
+        status = request.POST.get("status_consulta", "NADA_CONSTA")
+        observacoes = request.POST.get("observacoes_consulta", "")
+
+        # Upload do documento vinculado
+        arquivo = request.FILES.get("arquivo_consulta")
+        doc = None
+        if arquivo:
+            doc = DocumentoCliente.objects.create(
+                cliente=cliente,
+                tipo="CONSULTA_CREDITO",
+                arquivo=arquivo,
+            )
+
+        consulta = ConsultaCredito.objects.create(
+            cliente=cliente,
+            documento=doc,
+            status=status,
+            observacoes=observacoes,
+            registrado_por=request.user,
+        )
+
+        # Alertas (status ALERTA)
+        if status == "ALERTA":
+            cnpj_al = request.POST.get("alerta_cnpj", "").strip()
+            desc_al = request.POST.get("alerta_descricao", "").strip()
+            valor_al = request.POST.get("alerta_valor", "")
+            if cnpj_al or desc_al:
+                RestricaoCredito.objects.create(
+                    consulta=consulta,
+                    cnpj_credor=cnpj_al,
+                    descricao=desc_al,
+                    valor=_parse_brl(valor_al),
+                )
+
+        # Restrições (status COM_RESTRICAO)
+        if status == "COM_RESTRICAO":
+            idx = 0
+            while True:
+                cnpj = request.POST.get(f"rest_cnpj_{idx}", "").strip()
+                nome = request.POST.get(f"rest_nome_{idx}", "").strip()
+                valor = request.POST.get(f"rest_valor_{idx}", "")
+                desc = request.POST.get(f"rest_desc_{idx}", "").strip()
+                if not cnpj and not nome and not valor:
+                    break
+                RestricaoCredito.objects.create(
+                    consulta=consulta,
+                    cnpj_credor=cnpj,
+                    nome_credor=nome,
+                    valor=_parse_brl(valor),
+                    descricao=desc,
+                )
+                idx += 1
+
+        cor = {"NADA_CONSTA": "success", "ALERTA": "warning", "COM_RESTRICAO": "danger"}.get(status, "info")
+        messages.success(request, f"Consulta de crédito registrada: {consulta.get_status_display()}")
+
+    return redirect("clientes:editar", cliente_id=cliente.id)
+
+
+def _parse_brl(valor_str):
+    """Converte BRL string para Decimal."""
+    from decimal import Decimal
+    if not valor_str or not valor_str.strip():
+        return Decimal("0.00")
+    limpo = valor_str.replace("R$", "").replace(" ", "").strip()
+    if "," in limpo and "." in limpo:
+        limpo = limpo.replace(".", "").replace(",", ".")
+    elif "," in limpo:
+        limpo = limpo.replace(",", ".")
+    try:
+        return Decimal(limpo)
+    except Exception:
+        return Decimal("0.00")
+
+
+@login_required
+def excluir_consulta_credito(request, consulta_id):
+    """Exclui uma consulta de crédito."""
+    consulta = get_object_or_404(ConsultaCredito, id=consulta_id)
+    cliente_id = consulta.cliente_id
+    consulta.delete()
+    messages.info(request, "Consulta de crédito excluída.")
     return redirect("clientes:editar", cliente_id=cliente_id)
