@@ -166,7 +166,8 @@
         </div>
 
         <div class="d-flex gap-2 flex-wrap">
-          <!-- AVANÇAR -->
+          <!-- AVANÇAR (não aparece no COMITE — usa Deferir/Indeferir) -->
+          {% if etapa_ativa.etapa != 'COMITE' %}
           <form method="post" action="{% url 'emprestimos:esteira_avancar' proposta.id %}" class="d-inline">
             {% csrf_token %}
             <input type="hidden" name="parecer" class="parecer-input">
@@ -176,6 +177,7 @@
               {% if etapa_ativa.etapa == 'LIBERACAO' %}Aprovar e Liberar{% else %}Avançar Etapa{% endif %}
             </button>
           </form>
+          {% endif %}
 
           <!-- DEVOLVER -->
           <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#modalDevolver">
@@ -401,15 +403,278 @@
     </div>
     {% endif %}
 
-    <!-- VOTAÇÃO DO COMITÊ -->
+    <!-- COMITÊ: DADOS COMPLETOS + CONTRATOS EM ABERTO + HISTÓRICO + VOTAÇÃO -->
     {% if is_comite %}
+
+    <!-- DADOS COMPLETOS DO CLIENTE -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2 bg-dark text-white">
+        <strong><i class="bi bi-person-vcard me-1"></i>Dados Completos do Cliente</strong>
+      </div>
+      <div class="card-body small">
+        <div class="row">
+          <div class="col-6 mb-2">
+            <span class="text-muted">Nome:</span><br>
+            <strong>{{ cliente_completo.nome_completo }}</strong>
+          </div>
+          <div class="col-6 mb-2">
+            <span class="text-muted">CPF:</span><br>
+            <strong>{{ cliente_completo.cpf }}</strong>
+          </div>
+          <div class="col-4 mb-2">
+            <span class="text-muted">Telefone:</span><br>
+            <strong>{{ cliente_completo.telefone|default:"-" }}</strong>
+          </div>
+          <div class="col-4 mb-2">
+            <span class="text-muted">Data Nasc.:</span><br>
+            <strong>{{ cliente_completo.data_nascimento|date:"d/m/Y"|default:"-" }}</strong>
+          </div>
+          <div class="col-4 mb-2">
+            <span class="text-muted">Estado Civil:</span><br>
+            <strong>{{ cliente_completo.get_estado_civil_display|default:"-" }}</strong>
+          </div>
+          <div class="col-6 mb-2">
+            <span class="text-muted">Profissão:</span><br>
+            <strong>{{ cliente_completo.profissao|default:"-" }}</strong>
+          </div>
+          <div class="col-6 mb-2">
+            <span class="text-muted">Renda Mensal:</span><br>
+            <strong>{% if cliente_completo.renda_mensal %}R$ {{ cliente_completo.renda_mensal|floatformat:2 }}{% else %}-{% endif %}</strong>
+          </div>
+          <div class="col-12 mb-2">
+            <span class="text-muted">Endereço:</span><br>
+            <strong>{{ cliente_completo.logradouro }}, {{ cliente_completo.numero }}
+            {% if cliente_completo.complemento %} — {{ cliente_completo.complemento }}{% endif %}
+            — {{ cliente_completo.bairro }}, {{ cliente_completo.cidade }}/{{ cliente_completo.uf }}
+            CEP: {{ cliente_completo.cep }}</strong>
+          </div>
+        </div>
+
+        <!-- Bens -->
+        {% if cliente_completo.bens_moveis.all %}
+        <div class="mt-2">
+          <span class="text-muted fw-semibold">Bens Móveis:</span>
+          {% for bm in cliente_completo.bens_moveis.all %}
+            <br>· {{ bm.get_tipo_display }} — {{ bm.descricao }} {% if bm.placa %}({{ bm.placa }}){% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if cliente_completo.bens_imoveis.all %}
+        <div class="mt-2">
+          <span class="text-muted fw-semibold">Bens Imóveis:</span>
+          {% for bi in cliente_completo.bens_imoveis.all %}
+            <br>· {{ bi.get_tipo_display }} — {{ bi.endereco_completo }} {% if bi.matricula %}(Mat: {{ bi.matricula }}){% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- GARANTIAS DA PROPOSTA -->
+    {% if garantias %}
+    <div class="card shadow-sm mb-3 border-info">
+      <div class="card-header py-2 bg-info bg-opacity-25">
+        <strong><i class="bi bi-shield-check me-1"></i>Garantias Vinculadas</strong>
+        <span class="badge bg-info ms-1">{{ garantias|length }}</span>
+      </div>
+      <div class="card-body small">
+        {% for g in garantias %}
+        <div class="{% if not forloop.last %}mb-3 pb-2 border-bottom{% endif %}">
+
+          {% if g.tipo == 'CHEQUE' %}
+            <div class="d-flex align-items-center">
+              <i class="bi bi-card-text text-primary me-2 fs-5"></i>
+              <strong>Cheque</strong>
+            </div>
+
+          {% elif g.tipo == 'AVALISTA' and g.avalista %}
+            <div class="d-flex align-items-center mb-1">
+              <i class="bi bi-person-check text-success me-2 fs-5"></i>
+              <strong>Avalista: {{ g.avalista.nome_completo }}</strong>
+            </div>
+            <div class="ms-4">
+              <div class="row">
+                <div class="col-6">
+                  <span class="text-muted">CPF:</span> <strong>{{ g.avalista.cpf }}</strong>
+                </div>
+                <div class="col-6">
+                  <span class="text-muted">Telefone:</span> <strong>{{ g.avalista.telefone|default:"-" }}</strong>
+                </div>
+                <div class="col-6">
+                  <span class="text-muted">Profissão:</span> <strong>{{ g.avalista.profissao|default:"-" }}</strong>
+                </div>
+                <div class="col-6">
+                  <span class="text-muted">Renda:</span>
+                  <strong>{% if g.avalista.renda_mensal %}R$ {{ g.avalista.renda_mensal|floatformat:2 }}{% else %}-{% endif %}</strong>
+                </div>
+                <div class="col-12">
+                  <span class="text-muted">Endereço:</span>
+                  <strong>{{ g.avalista.logradouro }}, {{ g.avalista.numero }} — {{ g.avalista.bairro }}, {{ g.avalista.cidade }}/{{ g.avalista.uf }}</strong>
+                </div>
+              </div>
+
+              {% with docs_av=g.avalista.documentos_dict %}
+              <div class="mt-2">
+                <span class="text-muted fw-semibold">Documentação:</span>
+                <div class="d-flex flex-wrap gap-1 mt-1">
+                  {% for tipo_cod, tipo_nome in docs_tipos %}
+                    {% if tipo_cod in docs_av %}
+                      <span class="badge bg-success"><i class="bi bi-check me-1"></i>{{ tipo_nome }}</span>
+                    {% else %}
+                      <span class="badge bg-danger"><i class="bi bi-x me-1"></i>{{ tipo_nome }}</span>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </div>
+              {% endwith %}
+
+              {% if g.avalista.bens_moveis.all %}
+              <div class="mt-1">
+                <span class="text-muted">Veículos:</span>
+                {% for bm in g.avalista.bens_moveis.all %}
+                  {{ bm.get_tipo_display }} {{ bm.descricao }} {% if bm.placa %}({{ bm.placa }}){% endif %}{% if not forloop.last %},{% endif %}
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% if g.avalista.bens_imoveis.all %}
+              <div class="mt-1">
+                <span class="text-muted">Imóveis:</span>
+                {% for bi in g.avalista.bens_imoveis.all %}
+                  {{ bi.get_tipo_display }} {% if bi.matricula %}(Mat: {{ bi.matricula }}){% endif %}{% if not forloop.last %},{% endif %}
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+
+          {% elif g.tipo == 'BEM_MOVEL' and g.bem_movel %}
+            <div class="d-flex align-items-center mb-1">
+              <i class="bi bi-truck text-primary me-2 fs-5"></i>
+              <strong>Veículo: {{ g.bem_movel.get_tipo_display }} — {{ g.bem_movel.descricao }}</strong>
+            </div>
+            <div class="ms-4">
+              {% if g.bem_movel.placa %}Placa: <strong>{{ g.bem_movel.placa }}</strong> · {% endif %}
+              {% if g.bem_movel.renavam %}RENAVAM: <strong>{{ g.bem_movel.renavam }}</strong>{% endif %}
+            </div>
+
+          {% elif g.tipo == 'BEM_IMOVEL' and g.bem_imovel %}
+            <div class="d-flex align-items-center mb-1">
+              <i class="bi bi-house-door text-success me-2 fs-5"></i>
+              <strong>Imóvel: {{ g.bem_imovel.get_tipo_display }} — {{ g.bem_imovel.descricao }}</strong>
+            </div>
+            <div class="ms-4">
+              {{ g.bem_imovel.endereco_completo }}
+              {% if g.bem_imovel.matricula %}<br>Matrícula: <strong>{{ g.bem_imovel.matricula }}</strong>{% endif %}
+            </div>
+
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- CONTRATOS EM ABERTO -->
+    <div class="card shadow-sm mb-3 {% if contratos_abertos %}border-warning{% endif %}">
+      <div class="card-header py-2">
+        <strong><i class="bi bi-file-earmark-text me-1"></i>Contratos em Aberto</strong>
+        {% if contratos_abertos %}
+        <span class="badge bg-warning text-dark ms-1">{{ contratos_abertos|length }}</span>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if contratos_abertos %}
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Contrato</th>
+              <th>Status</th>
+              <th class="text-end">Valor</th>
+              <th class="text-center">Parcelas</th>
+              <th class="text-end">Em Atraso</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in contratos_abertos %}
+            <tr>
+              <td class="small fw-semibold">{{ c.codigo_contrato }}</td>
+              <td>
+                {% if c.status == 'ATRASADO' %}
+                  <span class="badge bg-danger">Atrasado</span>
+                {% else %}
+                  <span class="badge bg-success">Ativo</span>
+                {% endif %}
+              </td>
+              <td class="text-end small">R$ {{ c.valor_emprestado|floatformat:2 }}</td>
+              <td class="text-center small">
+                {{ c.parcelas.count }}x R$ {{ c.valor_parcela_aplicada|floatformat:2 }}
+              </td>
+              <td class="text-end small fw-bold text-danger">
+                {% with atraso=c.parcelas_vencidas %}
+                  {% if atraso %}{{ atraso }} parcela{{ atraso|pluralize:"s" }}{% else %}—{% endif %}
+                {% endwith %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-3 small">
+          <i class="bi bi-check-circle text-success me-1"></i>Nenhum contrato em aberto.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- HISTÓRICO DE PAGAMENTOS -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2">
+        <strong><i class="bi bi-clock-history me-1"></i>Histórico de Pagamentos (últimos 30)</strong>
+      </div>
+      <div class="card-body p-0" style="max-height: 250px; overflow-y: auto;">
+        {% if historico_pagamentos %}
+        <table class="table table-sm table-striped mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Contrato</th>
+              <th class="text-center">Parcela</th>
+              <th>Vencimento</th>
+              <th>Pago em</th>
+              <th class="text-end">Valor</th>
+              <th class="text-center">Atraso</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in historico_pagamentos %}
+            <tr>
+              <td class="small">{{ p.emprestimo.codigo_contrato }}</td>
+              <td class="text-center small">{{ p.numero }}/{{ p.emprestimo.qtd_parcelas }}</td>
+              <td class="small">{{ p.vencimento|date:"d/m/Y" }}</td>
+              <td class="small">{{ p.data_pagamento|date:"d/m/Y" }}</td>
+              <td class="text-end small">R$ {{ p.valor|floatformat:2 }}</td>
+              <td class="text-center">
+                {% if p.data_pagamento > p.vencimento %}
+                  <span class="badge bg-danger">{{ p.dias_atraso }}d</span>
+                {% else %}
+                  <span class="badge bg-success">OK</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-3 small">Nenhum pagamento registrado.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- VOTAÇÃO -->
     <div class="card shadow-sm mb-3 border-primary">
       <div class="card-header py-2 bg-primary text-white">
         <strong><i class="bi bi-people-fill me-1"></i>Votação do Comitê</strong>
       </div>
       <div class="card-body">
 
-        <!-- Votos já registrados -->
         {% if votos %}
         <div class="mb-3">
           {% for v in votos %}
@@ -430,20 +695,17 @@
         </div>
         {% endif %}
 
-        <!-- Formulário de voto (se ainda não votou) -->
         {% if not ja_votou and pode_atuar %}
         <form method="post" action="{% url 'emprestimos:esteira_votar' proposta.id %}">
           {% csrf_token %}
 
           {% if pendencias_docs %}
           <div class="alert alert-warning py-2 small">
-            <strong>Pendências documentais a considerar:</strong>
+            <strong>Pendências documentais:</strong>
             {% for p in pendencias_docs %}
               <div class="form-check mt-1">
                 <input class="form-check-input" type="checkbox" required id="ck-{{ forloop.counter }}">
-                <label class="form-check-label" for="ck-{{ forloop.counter }}">
-                  Ciente: {{ p }}
-                </label>
+                <label class="form-check-label" for="ck-{{ forloop.counter }}">Ciente: {{ p }}</label>
               </div>
             {% endfor %}
           </div>
@@ -452,13 +714,12 @@
           <div class="mb-2">
             <label class="form-label small fw-semibold">Observações do voto</label>
             <textarea name="observacoes_voto" class="form-control form-control-sm" rows="2"
-                      placeholder="Ex: Cliente com comprovante de renda desatualizado — aceito mediante justificativa."></textarea>
+                      placeholder="Ressalvas, justificativas..."></textarea>
           </div>
 
           <div class="mb-3">
-            <label class="form-label small fw-semibold">Sua senha (para validar o voto)</label>
-            <input type="password" name="senha" class="form-control form-control-sm" required
-                   placeholder="Digite sua senha">
+            <label class="form-label small fw-semibold">Sua senha (para validar)</label>
+            <input type="password" name="senha" class="form-control form-control-sm" required placeholder="Senha">
           </div>
 
           <div class="d-flex gap-2">

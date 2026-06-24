@@ -128,6 +128,14 @@ class Emprestimo(models.Model):
         vencidas = abertas.filter(vencimento__lt=hoje)
         self.status = EmprestimoStatus.ATRASADO if vencidas.exists() else EmprestimoStatus.ATIVO
 
+    @property
+    def parcelas_vencidas(self):
+        """Quantidade de parcelas em atraso."""
+        hoje = timezone.localdate()
+        return self.parcelas.filter(
+            status=ParcelaStatus.ABERTA, vencimento__lt=hoje
+        ).count()
+
 
 class Parcela(models.Model):
     emprestimo = models.ForeignKey(Emprestimo, on_delete=models.CASCADE, related_name="parcelas")

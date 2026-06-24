@@ -49,11 +49,7 @@ CHECKLIST_PADRAO = {
         ("Capacidade de pagamento validada", True),
         ("Histórico de contratos anteriores verificado", False),
     ],
-    "COMITE": [
-        ("Apresentação do caso ao comitê", True),
-        ("Votos registrados", True),
-        ("Ata da reunião anexada", False),
-    ],
+    "COMITE": [],
      "FORMALIZACAO": [
         ("Contrato assinado pelo cliente", True),
         ("Nota promissória assinada", True),
@@ -356,13 +352,49 @@ def detalhe_proposta(request, proposta_id):
     ja_votou = votos.filter(usuario=request.user).exists()
     is_comite = etapa_ativa and etapa_ativa.etapa == "COMITE"
 
+    # Dados completos do cliente para o comitê
+    cliente_completo = None
+    contratos_abertos = []
+    historico_pagamentos = []
+    if is_comite:
+        cli = proposta.cliente
+        cliente_completo = cli
+
+        # Contratos em aberto
+        contratos_abertos = Emprestimo.objects.filter(
+            cliente=cli, status__in=["ATIVO", "ATRASADO"]
+        ).prefetch_related("parcelas").order_by("-primeiro_vencimento")
+
+        # Histórico de pagamentos (últimas 30 parcelas pagas)
+        historico_pagamentos = Parcela.objects.filter(
+            emprestimo__cliente=cli,
+            status="PAGA",
+        ).select_related("emprestimo").order_by("-data_pagamento")[:30]
+
     # Contrato formalizado (se estiver na FORMALIZACAO)
     from .models import ContratoFormalizado
     contrato_formal = ContratoFormalizado.objects.filter(proposta=proposta).first()
     is_formalizacao = etapa_ativa and etapa_ativa.etapa == "FORMALIZACAO"
 
     # Garantias
-    garantias = proposta.garantias.select_related("avalista", "bem_movel", "bem_imovel").all()
+    garantias = proposta.garantias.select_related(
+        "avalista", "bem_movel", "bem_imovel"
+    ).all()
+
+    # Dados dos avalistas para o comitê (documentos e cadastro)
+    avalistas_detalhes = []
+    if is_comite:
+        for g in garantias.filter(tipo="AVALISTA", avalista__isnull=False):
+            av = g.avalista
+            av_docs = av.documentos.all()
+            av_docs_dict = av.documentos_dict
+            avalistas_detalhes.append({
+                "cliente": av,
+                "documentos": av_docs,
+                "docs_dict": av_docs_dict,
+                "bens_moveis": av.bens_moveis.all(),
+                "bens_imoveis": av.bens_imoveis.all(),
+            })
 
     # Checklist da formalização para exibir na liberação
     checklist_formalizacao = []
@@ -394,6 +426,11 @@ def detalhe_proposta(request, proposta_id):
         "votos": votos,
         "ja_votou": ja_votou,
         "is_comite": is_comite,
+        "cliente_completo": cliente_completo,
+        "docs_tipos": DocumentoCliente.TIPO_CHOICES,
+        "contratos_abertos": contratos_abertos,
+        "historico_pagamentos": historico_pagamentos,
+        "docs_tipos": DocumentoCliente.TIPO_CHOICES,
         "contrato_formal": contrato_formal,
         "is_formalizacao": is_formalizacao,
         "garantias": garantias,
