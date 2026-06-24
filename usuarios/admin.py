@@ -1,29 +1,29 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, Empresa
+from .models import Usuario, Empresa, PermissaoModulo
 
 
-@admin.register(Empresa)
-class EmpresaAdmin(admin.ModelAdmin):
-    list_display = ("razao_social", "nome_fantasia", "cnpj", "ativo", "criado_em")
-    list_filter = ("ativo",)
-    search_fields = ("razao_social", "nome_fantasia", "cnpj")
+class PermissaoInline(admin.TabularInline):
+    model = PermissaoModulo
+    extra = 0
 
 
 @admin.register(Usuario)
 class UsuarioAdmin(UserAdmin):
-    list_display = ("username", "get_full_name", "cargo", "empresa", "is_active")
+    list_display = ("username", "first_name", "last_name", "cargo", "empresa", "is_active")
     list_filter = ("cargo", "empresa", "is_active")
-
-    # Adiciona os campos customizados nas telas de edição
     fieldsets = UserAdmin.fieldsets + (
-        ("Dados da Empresa", {
-            "fields": ("empresa", "cargo", "telefone", "foto"),
-        }),
+        ("Dados Adicionais", {"fields": ("cargo", "empresa", "telefone")}),
     )
+    inlines = [PermissaoInline]
 
-    add_fieldsets = UserAdmin.add_fieldsets + (
-        ("Dados da Empresa", {
-            "fields": ("empresa", "cargo"),
-        }),
-    )
+
+@admin.register(Empresa)
+class EmpresaAdmin(admin.ModelAdmin):
+    list_display = ("razao_social", "cnpj", "ativo")
+
+
+@admin.register(PermissaoModulo)
+class PermissaoModuloAdmin(admin.ModelAdmin):
+    list_display = ("usuario", "modulo", "nivel")
+    list_filter = ("modulo", "nivel")

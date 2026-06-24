@@ -288,7 +288,7 @@ def detalhe_proposta(request, proposta_id):
     pode_atuar = False
     if etapa_ativa:
         from usuarios.decorators import cargo_minimo as _  # just for HIERARQUIA check
-        HIERARQUIA = {"OPERADOR": 1, "ANALISTA": 2, "GERENTE": 3, "ADMIN": 4}
+        HIERARQUIA = {"OPERACIONAL": 1, "CAIXA": 1, "SUPERVISOR": 2, "GERENTE": 3, "DIRETOR": 4}
         nivel_user = HIERARQUIA.get(request.user.cargo, 0)
         nivel_req = HIERARQUIA.get(etapa_ativa.cargo_minimo, 0)
         pode_atuar = nivel_user >= nivel_req
@@ -1014,46 +1014,9 @@ def votar_comite(request, proposta_id):
         observacoes=observacoes,
     )
 
-    etapa_ativa = proposta.etapa_atual_obj
-
-    if decisao == "DEFERIDO" and etapa_ativa:
-        # Aprova a etapa e avança para Formalização
-        etapa_ativa.resultado = EtapaProposta.Resultado.APROVADO
-        etapa_ativa.ativa = False
-        etapa_ativa.finalizado_em = timezone.now()
-        etapa_ativa.responsavel = request.user
-        etapa_ativa.parecer = f"Deferido: {observacoes}" if observacoes else "Deferido pelo comitê"
-        etapa_ativa.save()
-
-        proxima = _proxima_etapa(etapa_ativa.etapa, proposta)
-        if proxima:
-            nova = EtapaProposta.objects.create(proposta=proposta, etapa=proxima)
-            _criar_checklist_para_etapa(nova)
-            proposta.status = proxima
-            proposta.save()
-            messages.success(request, f"Voto registrado: DEFERIDO — Avançou para {nova.get_etapa_display()}")
-        return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
-
-    elif decisao == "INDEFERIDO" and etapa_ativa:
-        # Nega a proposta
-        etapa_ativa.resultado = EtapaProposta.Resultado.NEGADO
-        etapa_ativa.ativa = False
-        etapa_ativa.finalizado_em = timezone.now()
-        etapa_ativa.responsavel = request.user
-        etapa_ativa.parecer = f"Indeferido: {observacoes}" if observacoes else "Indeferido pelo comitê"
-        etapa_ativa.save()
-
-        proposta.status = "NEGADO"
-        proposta.parecer_analise = etapa_ativa.parecer
-        proposta.usuario_aprovador = request.user
-        proposta.data_analise = timezone.now()
-        proposta.save()
-
-        messages.info(request, f"Voto registrado: INDEFERIDO — Proposta negada.")
-        return redirect("emprestimos:painel_esteira")
-
     messages.success(request, f"Voto registrado: {decisao}")
     return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
 
 # ==============================================================================
 # 7. SIMULAÇÃO AJAX (chamada pelo formulário de nova proposta)

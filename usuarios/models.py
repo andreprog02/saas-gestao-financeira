@@ -25,24 +25,20 @@ class Usuario(AbstractUser):
     """Usuário customizado com vínculo a empresa e nível de permissão."""
 
     class Cargo(models.TextChoices):
-        OPERADOR = "OPERADOR", "Operador"
-        ANALISTA = "ANALISTA", "Analista"
+        OPERACIONAL = "OPERACIONAL", "Operacional"
+        CAIXA = "CAIXA", "Caixa"
+        SUPERVISOR = "SUPERVISOR", "Supervisor"
         GERENTE = "GERENTE", "Gerente"
-        ADMIN = "ADMIN", "Administrador"
+        DIRETOR = "DIRETOR", "Diretor"
 
     empresa = models.ForeignKey(
-        Empresa,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="usuarios",
-        verbose_name="Empresa",
+        Empresa, on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name="usuarios", verbose_name="Empresa",
     )
     cargo = models.CharField(
-        "Cargo / Nível",
-        max_length=20,
-        choices=Cargo.choices,
-        default=Cargo.OPERADOR,
+        "Cargo / Nível", max_length=20,
+        choices=Cargo.choices, default=Cargo.OPERACIONAL,
     )
     telefone = models.CharField("Telefone", max_length=20, blank=True, default="")
     foto = models.ImageField("Foto", upload_to="usuarios/fotos/", blank=True, null=True)
@@ -59,31 +55,92 @@ class Usuario(AbstractUser):
     # ---------- helpers de permissão ----------
 
     @property
-    def is_operador(self):
-        return self.cargo == self.Cargo.OPERADOR
+    def nivel(self):
+        """Retorna nível numérico do cargo."""
+        niveis = {
+            "OPERACIONAL": 1,
+            "CAIXA": 1,
+            "SUPERVISOR": 2,
+            "GERENTE": 3,
+            "DIRETOR": 4,
+        }
+        return niveis.get(self.cargo, 0)
 
     @property
-    def is_analista(self):
-        return self.cargo in (self.Cargo.ANALISTA, self.Cargo.GERENTE, self.Cargo.ADMIN)
+    def is_supervisor_ou_acima(self):
+        return self.nivel >= 2
 
     @property
-    def is_gerente(self):
-        return self.cargo in (self.Cargo.GERENTE, self.Cargo.ADMIN)
+    def is_gerente_ou_acima(self):
+        return self.nivel >= 3
 
     @property
-    def is_admin_empresa(self):
-        return self.cargo == self.Cargo.ADMIN
+    def is_diretor(self):
+        return self.cargo == self.Cargo.DIRETOR
+
+    def tem_permissao(self, modulo, nivel_minimo="VISUALIZAR"):
+        """Verifica se o usuário tem permissão para um módulo."""
+        # Diretor tem acesso total
+        if self.is_diretor or self.is_superuser:
+            return True
+
+        niveis = {"NENHUM": 0, "VISUALIZAR": 1, "OPERAR": 2, "GERENCIAR": 3}
+        nivel_req = niveis.get(nivel_minimo, 0)
+
+        perm = self.permissoes_modulo.filter(modulo=modulo).first()
+        if not perm:
+            return False
+
+        nivel_user = niveis.get(perm.nivel, 0)
+        return nivel_user >= nivel_req
 
     def tem_alcada(self, valor):
-        """
-        Verifica se o usuário pode aprovar até determinado valor.
-        Limites configuráveis — ajuste conforme sua política.
-        """
+        """Verifica alçada de aprovação por valor."""
         from decimal import Decimal
         limites = {
-            self.Cargo.OPERADOR: Decimal("0"),         # Não aprova
-            self.Cargo.ANALISTA: Decimal("10000.00"),   # Até 10k
-            self.Cargo.GERENTE: Decimal("50000.00"),    # Até 50k
-            self.Cargo.ADMIN: Decimal("999999999.99"),  # Sem limite
+            "OPERACIONAL": Decimal("0"),
+            "CAIXA": Decimal("0"),
+            "SUPERVISOR": Decimal("10000.00"),
+            "GERENTE": Decimal("50000.00"),
+            "DIRETOR": Decimal("999999999.99"),
         }
         return Decimal(str(valor)) <= limites.get(self.cargo, Decimal("0"))
+
+
+class PermissaoModulo(models.Model):
+    """Permissão de acesso por módulo do sistema — configurável por usuário."""
+
+    MODULO_CHOICES = [
+        ("CLIENTES", "Clientes"),
+        ("ESTEIRA", "Esteira de Crédito"),
+        ("CONTRATOS", "Gestão de Contratos"),
+        ("FINANCEIRO", "Fluxo de Caixa"),
+        ("CONCILIACAO", "Conciliação Bancária"),
+        ("COBRANCA", "Cobrança"),
+        ("CONTAS_PAGAR", "Contas a Pagar"),
+        ("RECEBIVEIS", "Recebíveis"),
+        ("USUARIOS", "Gestão de Usuários"),
+        ("RELATORIOS", "Relatórios"),
+    ]
+
+    NIVEL_CHOICES = [
+        ("NENHUM", "Sem Acesso"),
+        ("VISUALIZAR", "Visualizar"),
+        ("OPERAR", "Operar"),
+        ("GERENCIAR", "Gerenciar"),
+    ]
+
+    usuario = models.ForeignKey(
+        Usuario, on_delete=models.CASCADE, related_name="permissoes_modulo"
+    )
+    modulo = models.CharField("Módulo", max_length=20, choices=MODULO_CHOICES)
+    nivel = models.CharField("Nível de Acesso", max_length=15, choices=NIVEL_CHOICES, default="NENHUM")
+
+    class Meta:
+        unique_together = [("usuario", "modulo")]
+        ordering = ["modulo"]
+        verbose_name = "Permissão de Módulo"
+        verbose_name_plural = "Permissões de Módulos"
+
+    def __str__(self):
+        return f"{self.usuario.username} — {self.get_modulo_display()}: {self.get_nivel_display()}"
