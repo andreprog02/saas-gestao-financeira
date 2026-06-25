@@ -1,6 +1,7 @@
 import json  # <--- IMPORTANTE
 from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import transaction
 from django.utils import timezone
@@ -207,3 +208,146 @@ def estornar(request, transacao_id):
         else:
             messages.error(request, "Senha inválida.")
     return redirect('financeiro:index')
+
+# ==============================================================================
+# CONTROLE DE CAIXA
+# ==============================================================================
+
+@login_required
+def caixa_painel(request):
+    """Painel do caixa com status atual e histórico."""
+    from .models import Caixa
+    hoje = timezone.localdate()
+    caixa_hoje = Caixa.objects.filter(data=hoje).first()
+    historico = Caixa.objects.exclude(data=hoje).order_by("-data")[:30]
+    saldo_atual = calcular_saldo_atual()
+
+    return render(request, "financeiro/caixa_painel.html", {
+        "caixa_hoje": caixa_hoje,
+        "historico": historico,
+        "saldo_atual": saldo_atual,
+        "hoje": hoje,
+    })
+
+
+@login_required
+def caixa_abrir(request):
+    """Abre o caixa do dia."""
+    from .models import Caixa
+    hoje = timezone.localdate()
+
+    if Caixa.objects.filter(data=hoje).exists():
+        messages.warning(request, "O caixa de hoje já foi aberto.")
+        return redirect("financeiro:caixa_painel")
+
+    if request.method == "POST":
+        saldo = parse_valor_monetario(request.POST.get("saldo_abertura", "0"))
+        Caixa.objects.create(
+            data=hoje,
+            saldo_abertura=saldo,
+            aberto_por=request.user,
+            aberto_em=timezone.now(),
+        )
+        messages.success(request, f"Caixa aberto com saldo de R$ {saldo:.2f}")
+        return redirect("financeiro:caixa_painel")
+
+    # Sugere saldo do último fechamento
+    ultimo = Caixa.objects.filter(status="FECHADO").order_by("-data").first()
+    saldo_sugerido = ultimo.saldo_conferido if ultimo else Decimal("0.00")
+
+    return render(request, "financeiro/caixa_abrir.html", {
+        "hoje": hoje,
+        "saldo_sugerido": saldo_sugerido,
+    })
+
+
+@login_required
+def caixa_fechar(request):
+    """Fechamento do caixa com conferência de cédulas e moedas."""
+    from .models import Caixa
+    hoje = timezone.localdate()
+    caixa = Caixa.objects.filter(data=hoje, status="ABERTO").first()
+
+    if not caixa:
+        messages.error(request, "Nenhum caixa aberto hoje.")
+        return redirect("financeiro:caixa_painel")
+
+    saldo_sistema = calcular_saldo_atual()
+
+    if request.method == "POST":
+        # Contagem de cédulas
+        cedulas = {}
+        total_ced = Decimal("0.00")
+        for val in ["200", "100", "50", "20", "10", "5", "2"]:
+            qtd = int(request.POST.get(f"ced_{val}", 0) or 0)
+            cedulas[val] = qtd
+            total_ced += Decimal(val) * qtd
+
+        # Contagem de moedas
+        moedas = {}
+        total_moe = Decimal("0.00")
+        for val, key in [("1.00", "100"), ("0.50", "050"), ("0.25", "025"), ("0.10", "010"), ("0.05", "005")]:
+            qtd = int(request.POST.get(f"moe_{key}", 0) or 0)
+            moedas[key] = qtd
+            total_moe += Decimal(val) * qtd
+
+        saldo_conferido = total_ced + total_moe
+        diferenca = saldo_conferido - saldo_sistema
+        obs = request.POST.get("observacoes", "")
+
+        caixa.saldo_sistema = saldo_sistema
+        caixa.saldo_conferido = saldo_conferido
+        caixa.diferenca = diferenca
+        caixa.contagem_cedulas = cedulas
+        caixa.contagem_moedas = moedas
+        caixa.observacoes_fechamento = obs
+        caixa.fechado_por = request.user
+        caixa.fechado_em = timezone.now()
+        caixa.status = "FECHADO"
+        caixa.save()
+
+        if abs(diferenca) < Decimal("0.01"):
+            messages.success(request, "Caixa fechado — conferência OK, sem diferença.")
+        elif diferenca > 0:
+            messages.warning(request, f"Caixa fechado — SOBRA de R$ {diferenca:.2f}")
+        else:
+            messages.error(request, f"Caixa fechado — FALTA de R$ {abs(diferenca):.2f}")
+
+        return redirect("financeiro:caixa_painel")
+
+    return render(request, "financeiro/caixa_fechar.html", {
+        "caixa": caixa,
+        "saldo_sistema": saldo_sistema,
+        "hoje": hoje,
+    })
+
+
+@login_required
+def caixa_detalhe(request, caixa_id):
+    """Detalhe de um caixa fechado."""
+    from .models import Caixa
+    caixa = get_object_or_404(Caixa, id=caixa_id)
+
+    cedulas_display = []
+    total_ced = Decimal("0.00")
+    for val in ["200", "100", "50", "20", "10", "5", "2"]:
+        qtd = caixa.contagem_cedulas.get(val, 0)
+        subtotal = Decimal(val) * qtd
+        total_ced += subtotal
+        cedulas_display.append({"valor": val, "qtd": qtd, "subtotal": subtotal})
+
+    moedas_display = []
+    total_moe = Decimal("0.00")
+    for val, key in [("1.00", "100"), ("0.50", "050"), ("0.25", "025"), ("0.10", "010"), ("0.05", "005")]:
+        qtd = caixa.contagem_moedas.get(key, 0)
+        subtotal = Decimal(val) * qtd
+        total_moe += subtotal
+        moedas_display.append({"valor": val, "qtd": qtd, "subtotal": subtotal})
+
+    return render(request, "financeiro/caixa_detalhe.html", {
+        "caixa": caixa,
+        "cedulas": cedulas_display,
+        "moedas": moedas_display,
+        "total_cedulas": total_ced,
+        "total_moedas": total_moe,
+    })

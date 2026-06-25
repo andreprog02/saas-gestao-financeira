@@ -71,3 +71,52 @@ def calcular_saldo_atual():
     from django.db.models import Sum
     total = Transacao.objects.aggregate(saldo=Sum('valor'))['saldo']
     return total or 0.00
+
+class Caixa(models.Model):
+    """Abertura e fechamento de caixa diário."""
+
+    STATUS_CHOICES = [
+        ("ABERTO", "Aberto"),
+        ("FECHADO", "Fechado"),
+    ]
+
+    data = models.DateField("Data", unique=True)
+    status = models.CharField("Status", max_length=10, choices=STATUS_CHOICES, default="ABERTO")
+
+    saldo_abertura = models.DecimalField("Saldo de Abertura", max_digits=12, decimal_places=2, default=0)
+    aberto_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="caixas_abertos",
+    )
+    aberto_em = models.DateTimeField("Aberto em", null=True, blank=True)
+
+    saldo_sistema = models.DecimalField("Saldo Sistema", max_digits=12, decimal_places=2, default=0)
+    saldo_conferido = models.DecimalField("Saldo Conferido", max_digits=12, decimal_places=2, default=0)
+    diferenca = models.DecimalField("Diferença", max_digits=12, decimal_places=2, default=0)
+    observacoes_fechamento = models.TextField("Observações", blank=True, default="")
+    fechado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="caixas_fechados",
+    )
+    fechado_em = models.DateTimeField("Fechado em", null=True, blank=True)
+
+    contagem_cedulas = models.JSONField("Contagem Cédulas", default=dict, blank=True)
+    contagem_moedas = models.JSONField("Contagem Moedas", default=dict, blank=True)
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-data"]
+        verbose_name = "Caixa"
+        verbose_name_plural = "Caixas"
+
+    def __str__(self):
+        return f"Caixa {self.data.strftime('%d/%m/%Y')} — {self.get_status_display()}"
+
+    @property
+    def diferenca_cor(self):
+        if self.diferenca > 0:
+            return "success"
+        elif self.diferenca < 0:
+            return "danger"
+        return "secondary"

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-safe me-2"></i>Controle de Caixa</h4>
+  <div class="d-flex gap-2">
+    {% if not caixa_hoje %}
+    <a href="{% url 'financeiro:caixa_abrir' %}" class="btn btn-success btn-sm">
+      <i class="bi bi-unlock me-1"></i>Abrir Caixa
+    </a>
+    {% elif caixa_hoje.status == 'ABERTO' %}
+    <a href="{% url 'financeiro:caixa_fechar' %}" class="btn btn-danger btn-sm">
+      <i class="bi bi-lock me-1"></i>Fechar Caixa
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3 {% if caixa_hoje and caixa_hoje.status == 'ABERTO' %}border-success{% elif caixa_hoje %}border-secondary{% else %}border-warning{% endif %}">
+  <div class="card-body py-3">
+    <div class="row align-items-center">
+      <div class="col-auto">
+        {% if caixa_hoje and caixa_hoje.status == 'ABERTO' %}
+          <i class="bi bi-unlock-fill text-success" style="font-size: 2.5rem;"></i>
+        {% elif caixa_hoje and caixa_hoje.status == 'FECHADO' %}
+          <i class="bi bi-lock-fill text-secondary" style="font-size: 2.5rem;"></i>
+        {% else %}
+          <i class="bi bi-question-circle text-warning" style="font-size: 2.5rem;"></i>
+        {% endif %}
+      </div>
+      <div class="col">
+        <h5 class="mb-0">
+          {% if caixa_hoje and caixa_hoje.status == 'ABERTO' %}Caixa Aberto — {{ hoje|date:"d/m/Y" }}
+          {% elif caixa_hoje and caixa_hoje.status == 'FECHADO' %}Caixa Fechado — {{ hoje|date:"d/m/Y" }}
+          {% else %}Caixa não aberto hoje{% endif %}
+        </h5>
+        {% if caixa_hoje %}
+        <small class="text-muted">
+          Abertura: R$ {{ caixa_hoje.saldo_abertura|floatformat:2 }}
+          · {{ caixa_hoje.aberto_por.get_full_name|default:caixa_hoje.aberto_por.username }}
+          · {{ caixa_hoje.aberto_em|date:"H:i" }}
+          {% if caixa_hoje.status == 'FECHADO' %}
+            | Fechamento: R$ {{ caixa_hoje.saldo_conferido|floatformat:2 }}
+            · {{ caixa_hoje.fechado_por.get_full_name|default:"" }} · {{ caixa_hoje.fechado_em|date:"H:i" }}
+            {% if caixa_hoje.diferenca != 0 %}
+              | <span class="text-{{ caixa_hoje.diferenca_cor }} fw-bold">Diferença: R$ {{ caixa_hoje.diferenca|floatformat:2 }}</span>
+            {% endif %}
+          {% endif %}
+        </small>
+        {% endif %}
+      </div>
+      <div class="col-auto">
+        <span class="fw-bold fs-4 text-primary">R$ {{ saldo_atual|floatformat:2 }}</span>
+        <small class="d-block text-muted text-end">Saldo Sistema</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header py-2"><strong><i class="bi bi-clock-history me-1"></i>Histórico de Caixas</strong></div>
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-dark">
+        <tr><th>Data</th><th>Status</th><th class="text-end">Abertura</th><th class="text-end">Conferido</th><th class="text-end">Diferença</th><th>Aberto por</th><th>Fechado por</th><th class="text-end">Ação</th></tr>
+      </thead>
+      <tbody>
+        {% for c in historico %}
+        <tr>
+          <td class="fw-semibold small">{{ c.data|date:"d/m/Y" }}</td>
+          <td>{% if c.status == 'ABERTO' %}<span class="badge bg-success">Aberto</span>{% else %}<span class="badge bg-secondary">Fechado</span>{% endif %}</td>
+          <td class="text-end small">R$ {{ c.saldo_abertura|floatformat:2 }}</td>
+          <td class="text-end small">{% if c.status == 'FECHADO' %}R$ {{ c.saldo_conferido|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td class="text-end small fw-bold {% if c.diferenca != 0 %}text-{{ c.diferenca_cor }}{% endif %}">{% if c.status == 'FECHADO' %}R$ {{ c.diferenca|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td class="small text-muted">{{ c.aberto_por.get_full_name|default:"-" }}</td>
+          <td class="small text-muted">{{ c.fechado_por.get_full_name|default:"-" }}</td>
+          <td class="text-end">{% if c.status == 'FECHADO' %}<a href="{% url 'financeiro:caixa_detalhe' c.id %}" class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-eye"></i></a>{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-3">Nenhum registro anterior.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

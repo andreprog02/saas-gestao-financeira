@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="bi bi-lock me-2"></i>Fechar Caixa — {{ hoje|date:"d/m/Y" }}</h5>
+      </div>
+      <div class="card-body">
+
+        <div class="alert alert-info py-2 d-flex justify-content-between align-items-center mb-4">
+          <span><i class="bi bi-calculator me-1"></i><strong>Saldo no Sistema:</strong></span>
+          <span class="fs-4 fw-bold">R$ {{ saldo_sistema|floatformat:2 }}</span>
+        </div>
+
+        <form method="post">
+          {% csrf_token %}
+          <div class="row g-4">
+            <div class="col-md-6">
+              <h6 class="fw-bold text-muted mb-2"><i class="bi bi-cash me-1"></i>Cédulas</h6>
+              <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                  <tr><th>Nota</th><th style="width:80px;" class="text-center">Qtd</th><th class="text-end">Subtotal</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td class="fw-semibold">R$ 200,00</td><td><input type="number" name="ced_200" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="200"></td><td class="text-end fw-bold ced-sub" id="sub-200">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 100,00</td><td><input type="number" name="ced_100" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="100"></td><td class="text-end fw-bold ced-sub" id="sub-100">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 50,00</td><td><input type="number" name="ced_50" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="50"></td><td class="text-end fw-bold ced-sub" id="sub-50">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 20,00</td><td><input type="number" name="ced_20" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="20"></td><td class="text-end fw-bold ced-sub" id="sub-20">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 10,00</td><td><input type="number" name="ced_10" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="10"></td><td class="text-end fw-bold ced-sub" id="sub-10">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 5,00</td><td><input type="number" name="ced_5" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="5"></td><td class="text-end fw-bold ced-sub" id="sub-5">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 2,00</td><td><input type="number" name="ced_2" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="2"></td><td class="text-end fw-bold ced-sub" id="sub-2">0,00</td></tr>
+                </tbody>
+                <tfoot class="table-dark"><tr><td colspan="2" class="fw-bold">Total Cédulas</td><td class="text-end fw-bold fs-5" id="total-cedulas">R$ 0,00</td></tr></tfoot>
+              </table>
+            </div>
+
+            <div class="col-md-6">
+              <h6 class="fw-bold text-muted mb-2"><i class="bi bi-coin me-1"></i>Moedas</h6>
+              <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                  <tr><th>Moeda</th><th style="width:80px;" class="text-center">Qtd</th><th class="text-end">Subtotal</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td class="fw-semibold">R$ 1,00</td><td><input type="number" name="moe_100" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="1.00"></td><td class="text-end fw-bold moe-sub" id="sub-m100">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 0,50</td><td><input type="number" name="moe_050" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="0.50"></td><td class="text-end fw-bold moe-sub" id="sub-m050">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 0,25</td><td><input type="number" name="moe_025" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="0.25"></td><td class="text-end fw-bold moe-sub" id="sub-m025">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 0,10</td><td><input type="number" name="moe_010" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="0.10"></td><td class="text-end fw-bold moe-sub" id="sub-m010">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 0,05</td><td><input type="number" name="moe_005" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="0.05"></td><td class="text-end fw-bold moe-sub" id="sub-m005">0,00</td></tr>
+                </tbody>
+                <tfoot class="table-dark"><tr><td colspan="2" class="fw-bold">Total Moedas</td><td class="text-end fw-bold fs-5" id="total-moedas">R$ 0,00</td></tr></tfoot>
+              </table>
+
+              <div class="card mt-3 border-dark">
+                <div class="card-body py-2 text-center">
+                  <small class="text-muted d-block">Total Conferido</small>
+                  <span class="fs-3 fw-bold text-primary" id="total-geral">R$ 0,00</span>
+                  <div class="mt-1">
+                    <small class="text-muted">Diferença: </small>
+                    <span class="fw-bold" id="diferenca">R$ 0,00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="form-label fw-semibold">Observações</label>
+            <textarea name="observacoes" class="form-control" rows="2" placeholder="Alguma observação..."></textarea>
+          </div>
+
+          <div class="d-flex justify-content-between mt-3">
+            <a href="{% url 'financeiro:caixa_painel' %}" class="btn btn-outline-secondary">Voltar</a>
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Confirmar fechamento do caixa?')">
+              <i class="bi bi-lock me-1"></i>Confirmar Fechamento
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var saldoSistema = parseFloat("{{ saldo_sistema|stringformat:'f' }}");
+  function fmt(v){ return v.toLocaleString('pt-BR', {style:'currency', currency:'BRL'}); }
+  function recalcular(){
+    var totalCed = 0, totalMoe = 0;
+    document.querySelectorAll('.ced-input').forEach(function(el){
+      var qtd = parseInt(el.value) || 0;
+      var val = parseFloat(el.dataset.valor);
+      var sub = qtd * val;
+      totalCed += sub;
+      document.getElementById('sub-'+el.name.replace('ced_','')).textContent = fmt(sub);
+    });
+    document.querySelectorAll('.moe-input').forEach(function(el){
+      var qtd = parseInt(el.value) || 0;
+      var val = parseFloat(el.dataset.valor);
+      var sub = qtd * val;
+      totalMoe += sub;
+      document.getElementById('sub-m'+el.name.replace('moe_','')).textContent = fmt(sub);
+    });
+    var total = totalCed + totalMoe;
+    var diff = total - saldoSistema;
+    document.getElementById('total-cedulas').textContent = fmt(totalCed);
+    document.getElementById('total-moedas').textContent = fmt(totalMoe);
+    document.getElementById('total-geral').textContent = fmt(total);
+    var elDiff = document.getElementById('diferenca');
+    if(diff > 0.001){ elDiff.className = 'fw-bold text-success'; elDiff.textContent = '+' + fmt(diff) + ' (sobra)'; }
+    else if(diff < -0.001){ elDiff.className = 'fw-bold text-danger'; elDiff.textContent = fmt(diff) + ' (falta)'; }
+    else { elDiff.className = 'fw-bold text-success'; elDiff.textContent = 'R$ 0,00 (OK)'; }
+  }
+  document.querySelectorAll('.ced-input, .moe-input').forEach(function(el){ el.addEventListener('input', recalcular); });
+  recalcular();
+})();
+</script>
+{% endblock %}

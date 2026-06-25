@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="bi bi-unlock me-2"></i>Abrir Caixa — {{ hoje|date:"d/m/Y" }}</h5>
+      </div>
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Saldo Inicial (R$)</label>
+            <input type="text" name="saldo_abertura" class="form-control fs-4 text-center" id="saldo-brl"
+                   value="{{ saldo_sugerido|floatformat:2 }}" required>
+            <small class="text-muted">Valor sugerido com base no último fechamento.</small>
+          </div>
+          <div class="d-flex justify-content-between">
+            <a href="{% url 'financeiro:caixa_painel' %}" class="btn btn-outline-secondary">Voltar</a>
+            <button type="submit" class="btn btn-success"><i class="bi bi-unlock me-1"></i>Abrir Caixa</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var el = document.getElementById('saldo-brl');
+  if(!el) return;
+  el.addEventListener('input', function(){
+    var v = el.value.replace(/\D/g, '');
+    if(!v){ el.value = ''; return; }
+    var n = parseInt(v,10), r = (n/100).toFixed(2), p = r.split('.');
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    el.value = p.join(',');
+  });
+  el.addEventListener('keypress', function(e){ if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault(); });
+})();
+</script>
+{% endblock %}
