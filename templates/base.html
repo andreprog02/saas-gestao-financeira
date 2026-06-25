@@ -44,7 +44,20 @@
     <div class="collapse navbar-collapse" id="navbarNav">
       <ul class="navbar-nav me-auto">
         <li class="nav-item">
-            <a class="nav-link" href="/financeiro/"><i class="bi bi-speedometer2"></i> Fluxo de Caixa</a>
+        <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                <i class="bi bi-speedometer2"></i> Financeiro
+            </a>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="/financeiro/">
+                    <i class="bi bi-arrow-left-right me-2"></i>Fluxo de Caixa
+                </a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'financeiro:caixa_painel' %}">
+                    <i class="bi bi-safe me-2"></i>Controle de Caixa
+                </a></li>
+            </ul>
+        </li>
         </li>
 
         <li class="nav-item dropdown">

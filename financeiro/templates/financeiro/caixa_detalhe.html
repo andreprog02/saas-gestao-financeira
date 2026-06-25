@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-safe me-2"></i>Caixa — {{ caixa.data|date:"d/m/Y" }}</h4>
+  <a href="{% url 'financeiro:caixa_painel' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Voltar
+  </a>
+</div>
+
+<!-- RESUMO -->
+<div class="row g-3 mb-3">
+  <div class="col">
+    <div class="card border-success shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Saldo Abertura</small>
+        <span class="fw-bold fs-5">R$ {{ caixa.saldo_abertura|floatformat:2 }}</span>
+        <br><small class="text-muted">{{ caixa.aberto_por.get_full_name|default:caixa.aberto_por.username }} · {{ caixa.aberto_em|date:"H:i" }}</small>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Saldo Sistema</small>
+        <span class="fw-bold fs-5">R$ {{ caixa.saldo_sistema|floatformat:2 }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-primary shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Saldo Conferido</small>
+        <span class="fw-bold fs-5 text-primary">R$ {{ caixa.saldo_conferido|floatformat:2 }}</span>
+        <br><small class="text-muted">{{ caixa.fechado_por.get_full_name|default:"" }} · {{ caixa.fechado_em|date:"H:i" }}</small>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card border-{{ caixa.diferenca_cor }} shadow-sm">
+      <div class="card-body text-center py-2">
+        <small class="text-muted d-block">Diferença</small>
+        <span class="fw-bold fs-5 text-{{ caixa.diferenca_cor }}">R$ {{ caixa.diferenca|floatformat:2 }}</span>
+        {% if caixa.diferenca > 0 %}
+          <br><span class="badge bg-success">Sobra</span>
+        {% elif caixa.diferenca < 0 %}
+          <br><span class="badge bg-danger">Falta</span>
+        {% else %}
+          <br><span class="badge bg-success">OK</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- CÉDULAS -->
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><strong><i class="bi bi-cash me-1"></i>Cédulas</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>Nota</th><th class="text-center">Qtd</th><th class="text-end">Subtotal</th></tr>
+          </thead>
+          <tbody>
+            {% for item in cedulas %}
+            {% if item.qtd > 0 %}
+            <tr>
+              <td class="fw-semibold">R$ {{ item.valor }},00</td>
+              <td class="text-center">{{ item.qtd }}</td>
+              <td class="text-end fw-bold">R$ {{ item.subtotal|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+          <tfoot class="table-dark">
+            <tr>
+              <td colspan="2" class="fw-bold">Total Cédulas</td>
+              <td class="text-end fw-bold">R$ {{ total_cedulas|floatformat:2 }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MOEDAS -->
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><strong><i class="bi bi-coin me-1"></i>Moedas</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>Moeda</th><th class="text-center">Qtd</th><th class="text-end">Subtotal</th></tr>
+          </thead>
+          <tbody>
+            {% for item in moedas %}
+            {% if item.qtd > 0 %}
+            <tr>
+              <td class="fw-semibold">R$ {{ item.valor }}</td>
+              <td class="text-center">{{ item.qtd }}</td>
+              <td class="text-end fw-bold">R$ {{ item.subtotal|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+          <tfoot class="table-dark">
+            <tr>
+              <td colspan="2" class="fw-bold">Total Moedas</td>
+              <td class="text-end fw-bold">R$ {{ total_moedas|floatformat:2 }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if caixa.observacoes_fechamento %}
+<div class="card shadow-sm mt-3">
+  <div class="card-body py-2">
+    <strong class="small">Observações:</strong>
+    <span class="small">{{ caixa.observacoes_fechamento }}</span>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
