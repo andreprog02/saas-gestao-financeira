@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header bg-warning">
+        <h5 class="mb-0"><i class="bi bi-pencil me-2"></i>Editar Proposta #{{ proposta.id }} — {{ proposta.cliente.nome_completo }}</h5>
+      </div>
+      <div class="card-body">
+        <form method="post" id="form-editar">
+          {% csrf_token %}
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Cliente</label>
+              <input type="text" class="form-control" value="{{ proposta.cliente.nome_completo }} ({{ proposta.cliente.cpf }})" disabled>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Valor Solicitado (R$)</label>
+              <input type="text" name="valor" class="form-control" id="ed-valor"
+                     value="{{ proposta.valor_solicitado|floatformat:2 }}" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Taxa (% a.m.)</label>
+              <input type="number" name="taxa" class="form-control" step="0.01"
+                     value="{{ proposta.taxa_juros }}" required>
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Nº Parcelas</label>
+              <input type="number" name="qtd_parcelas" class="form-control"
+                     value="{{ proposta.qtd_parcelas }}" min="1" max="360" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">1º Vencimento</label>
+              <input type="date" name="vencimento" class="form-control"
+                     value="{{ proposta.primeiro_vencimento|date:'Y-m-d' }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Finalidade</label>
+              <select name="finalidade" class="form-select" required>
+                {% for val, label in finalidades %}
+                <option value="{{ val }}" {% if proposta.finalidade == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <!-- IOF -->
+          <div class="card bg-light mb-3">
+            <div class="card-body py-2">
+              <h6 class="fw-bold text-muted small mb-2">IOF e Débitos</h6>
+              <div class="row g-2">
+                <div class="col-6">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="tem_iof" id="ck-iof"
+                           {% if proposta.tem_iof %}checked{% endif %}>
+                    <label class="form-check-label small" for="ck-iof">Cobrar IOF</label>
+                  </div>
+                  {% if proposta.valor_iof %}
+                  <small class="text-muted">IOF atual: R$ {{ proposta.valor_iof|floatformat:2 }}</small>
+                  {% endif %}
+                </div>
+                <div class="col-3">
+                  <label class="form-label small fw-semibold">Débitos Extras (R$)</label>
+                  <input type="text" name="valor_debitos_extras" class="form-control form-control-sm brl-ed"
+                         value="{% if proposta.valor_debitos_extras %}{{ proposta.valor_debitos_extras|floatformat:2 }}{% endif %}">
+                </div>
+                <div class="col-3">
+                  <label class="form-label small fw-semibold">Descrição</label>
+                  <input type="text" name="descricao_debitos" class="form-control form-control-sm"
+                         value="{{ proposta.descricao_debitos }}">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MULTA E MORA -->
+          <div class="card bg-light mb-3">
+            <div class="card-body py-2">
+              <h6 class="fw-bold text-muted small mb-2">Multa e Juros de Mora</h6>
+              <div class="row g-2">
+                <div class="col-6">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="tem_multa" id="ck-multa"
+                           {% if proposta.tem_multa %}checked{% endif %}>
+                    <label class="form-check-label small" for="ck-multa">Multa por atraso</label>
+                  </div>
+                  <input type="number" name="multa_percent" class="form-control form-control-sm mt-1"
+                         value="{{ proposta.multa_percent }}" step="0.01" style="width:100px;">
+                </div>
+                <div class="col-6">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="tem_juros_mora" id="ck-mora"
+                           {% if proposta.tem_juros_mora %}checked{% endif %}>
+                    <label class="form-check-label small" for="ck-mora">Juros de mora</label>
+                  </div>
+                  <input type="number" name="juros_mora_percent" class="form-control form-control-sm mt-1"
+                         value="{{ proposta.juros_mora_percent }}" step="0.01" style="width:100px;">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Observações</label>
+            <textarea name="observacoes" class="form-control" rows="2">{{ proposta.observacoes }}</textarea>
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="{% url 'emprestimos:esteira_detalhe' proposta.id %}" class="btn btn-outline-secondary">
+              <i class="bi bi-arrow-left me-1"></i>Voltar
+            </a>
+            <button type="submit" class="btn btn-success">
+              <i class="bi bi-check-lg me-1"></i>Salvar Alterações
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Máscara BRL */
+document.querySelectorAll('#ed-valor, .brl-ed').forEach(function(el){
+  el.addEventListener('input', function(){
+    var v = el.value.replace(/\D/g, '');
+    if(!v){ el.value = ''; return; }
+    var n = parseInt(v,10), r = (n/100).toFixed(2), p = r.split('.');
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    el.value = p.join(',');
+  });
+  el.addEventListener('keypress', function(e){
+    if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault();
+  });
+});
+</script>
+{% endblock %}

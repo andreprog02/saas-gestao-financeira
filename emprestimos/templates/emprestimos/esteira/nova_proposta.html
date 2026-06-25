@@ -64,6 +64,50 @@
                 </div>
               </div>
 
+              <!-- FINALIDADE -->
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Finalidade do Empréstimo</label>
+                <select name="finalidade" class="form-select" required>
+                  <option value="CREDITO_PESSOAL">Crédito Pessoal</option>
+                  <option value="CAPITAL_GIRO">Capital de Giro (Empresas)</option>
+                  <option value="FINANCIAMENTO">Financiamento</option>
+                  <option value="REFINANCIAMENTO">Refinanciamento</option>
+                  <option value="RENEGOCIACAO">Renegociação</option>
+                  <option value="OUTRO">Outro</option>
+                </select>
+              </div>
+
+              <!-- IOF -->
+              <div class="card bg-light mb-3">
+                <div class="card-body py-2">
+                  <h6 class="fw-bold text-muted small mb-2">IOF e Débitos</h6>
+                  <div class="row g-2">
+                    <div class="col-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="tem_iof" id="ck-iof" checked onchange="calcIOF()">
+                        <label class="form-check-label small" for="ck-iof">Cobrar IOF</label>
+                      </div>
+                      <div id="iof-info" class="mt-1">
+                        <small class="text-muted">IOF diário: 0,0082% a.d. + 0,38% adicional</small>
+                        <div class="mt-1 fw-bold text-primary" id="iof-valor">IOF: R$ 0,00</div>
+                      </div>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small fw-semibold">Débitos Extras (R$)</label>
+                      <input type="text" name="valor_debitos_extras" class="form-control form-control-sm" id="debitos-brl" placeholder="0,00" inputmode="decimal">
+                      <input type="text" name="descricao_debitos" class="form-control form-control-sm mt-1" placeholder="Descrição dos débitos">
+                    </div>
+                  </div>
+                  <div class="mt-2 p-2 bg-white rounded border text-center">
+                    <small class="text-muted">Valor Solicitado (líquido):</small>
+                    <span class="fw-bold text-success" id="valor-liquido">R$ 0,00</span>
+                    <span class="mx-2">|</span>
+                    <small class="text-muted">Valor Bruto (contrato):</small>
+                    <span class="fw-bold text-primary" id="valor-bruto">R$ 0,00</span>
+                  </div>
+                </div>
+              </div>
+
               <!-- MULTA E MORA -->
               <div class="card bg-light mb-3">
                 <div class="card-body py-2">
@@ -268,10 +312,26 @@ $(document).ready(function() {
       var parts = reais.split('.');
       parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
       el.value = parts.join(',');
+      calcIOF();
     });
     el.addEventListener('keypress', function(e){
       if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault();
     });
+  })();
+
+  /* === MÁSCARA DÉBITOS === */
+  (function(){
+    var el = document.getElementById('debitos-brl');
+    if(!el) return;
+    el.addEventListener('input', function(){
+      var v = el.value.replace(/\D/g, '');
+      if(!v){ el.value = ''; calcIOF(); return; }
+      var n = parseInt(v,10), r = (n/100).toFixed(2), p = r.split('.');
+      p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      el.value = p.join(',');
+      calcIOF();
+    });
+    el.addEventListener('keypress', function(e){ if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault(); });
   })();
 
   /* === AVALISTA MODAL === */
@@ -356,6 +416,31 @@ $(document).ready(function() {
       }
     });
   });
+
+  /* === CÁLCULO IOF === */
+  function parseBRL(str){
+    if(!str) return 0;
+    var s = str.replace(/\D/g,'');
+    return s ? parseInt(s,10)/100 : 0;
+  }
+  function calcIOF(){
+    var valor = parseBRL($('#sim-valor').val());
+    var qtd = parseInt($('#sim-qtd').val()) || 12;
+    var temIOF = document.getElementById('ck-iof') && document.getElementById('ck-iof').checked;
+    var debitos = parseBRL($('#debitos-brl').val());
+    var iof = 0;
+    if(temIOF && valor > 0){
+      var dias = Math.min(qtd * 30, 365);
+      iof = valor * (0.000082 * dias) + valor * 0.0038;
+      iof = Math.round(iof * 100) / 100;
+    }
+    var bruto = valor + iof + debitos;
+    $('#iof-valor').text('IOF: ' + formatarDinheiro(iof));
+    $('#valor-liquido').text(formatarDinheiro(valor));
+    $('#valor-bruto').text(formatarDinheiro(bruto));
+    $('#iof-info').toggle(temIOF);
+  }
+  $('#sim-qtd').on('change', calcIOF);
 
   /* === SIMULAÇÃO === */
   function formatarDinheiro(valor) {

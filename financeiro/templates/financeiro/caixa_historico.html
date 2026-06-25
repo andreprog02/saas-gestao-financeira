@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-calendar3 me-2"></i>Histórico de Lançamentos</h4>
+  <a href="{% url 'financeiro:caixa_painel' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Painel
+  </a>
+</div>
+
+<!-- SELETOR DE DATA -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="d-flex gap-2 align-items-end">
+      <div>
+        <label class="form-label small fw-semibold mb-0">Data</label>
+        <input type="date" name="data" class="form-control form-control-sm" value="{{ data_selecionada }}" required>
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search me-1"></i>Consultar</button>
+    </form>
+  </div>
+</div>
+
+{% if data %}
+
+  {% if caixa %}
+  <!-- RESUMO DO DIA -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+      <strong><i class="bi bi-safe me-1"></i>Caixa — {{ data|date:"d/m/Y" }}</strong>
+      <span class="badge bg-{% if caixa.status == 'ABERTO' %}success{% else %}secondary{% endif %} fs-6">
+        {{ caixa.get_status_display }}
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="row text-center g-2 mb-2">
+        <div class="col">
+          <small class="text-muted d-block">Abertura</small>
+          <strong>R$ {{ caixa.saldo_abertura|floatformat:2 }}</strong>
+          <br><small class="text-muted">{{ caixa.aberto_por.get_full_name|default:"-" }} · {{ caixa.aberto_em|date:"H:i" }}</small>
+        </div>
+        {% if totais %}
+        <div class="col">
+          <small class="text-muted d-block">💵 Entradas</small>
+          <strong class="text-success">R$ {{ totais.entradas_fisico|floatformat:2 }}</strong>
+        </div>
+        <div class="col">
+          <small class="text-muted d-block">💵 Saídas</small>
+          <strong class="text-danger">R$ {{ totais.saidas_fisico|floatformat:2 }}</strong>
+        </div>
+        <div class="col">
+          <small class="text-muted d-block">🔄 Entradas</small>
+          <strong class="text-success">R$ {{ totais.entradas_eletronico|floatformat:2 }}</strong>
+        </div>
+        <div class="col">
+          <small class="text-muted d-block">🔄 Saídas</small>
+          <strong class="text-danger">R$ {{ totais.saidas_eletronico|floatformat:2 }}</strong>
+        </div>
+        {% endif %}
+        {% if caixa.status == 'FECHADO' %}
+        <div class="col">
+          <small class="text-muted d-block">Conferido</small>
+          <strong>R$ {{ caixa.saldo_conferido|floatformat:2 }}</strong>
+          <br><small class="text-muted">{{ caixa.fechado_por.get_full_name|default:"-" }} · {{ caixa.fechado_em|date:"H:i" }}</small>
+        </div>
+        <div class="col">
+          <small class="text-muted d-block">Diferença</small>
+          <strong class="text-{{ caixa.diferenca_cor }}">R$ {{ caixa.diferenca|floatformat:2 }}</strong>
+        </div>
+        {% endif %}
+      </div>
+      {% if totais.total_estornos > 0 %}
+      <div class="text-center">
+        <span class="badge bg-warning text-dark">{{ totais.total_estornos }} estorno{{ totais.total_estornos|pluralize:"s" }}</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- LANÇAMENTOS -->
+  <div class="card shadow-sm">
+    <div class="card-header py-2">
+      <strong><i class="bi bi-list-ul me-1"></i>Lançamentos</strong>
+      <span class="badge bg-secondary ms-1">{{ movimentacoes.count }}</span>
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Hora</th>
+            <th>Cód</th>
+            <th>Descrição</th>
+            <th>Cliente</th>
+            <th class="text-end">Valor</th>
+            <th class="text-center">Tipo</th>
+            <th>Autenticação</th>
+            <th>Operador</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in movimentacoes %}
+          <tr class="{% if m.estornado %}table-secondary text-decoration-line-through{% endif %}">
+            <td class="small">{{ m.data_hora|date:"H:i:s" }}</td>
+            <td>
+              <span class="badge {% if m.codigo_operacao.tipo == 'E' %}bg-success{% else %}bg-danger{% endif %}">
+                {{ m.codigo_operacao.codigo }}
+              </span>
+            </td>
+            <td class="small">{{ m.descricao }}</td>
+            <td class="small text-muted">{{ m.cliente.nome_completo|default:"-" }}</td>
+            <td class="text-end fw-bold small {% if m.valor > 0 %}text-success{% else %}text-danger{% endif %}">
+              R$ {{ m.valor|floatformat:2 }}
+            </td>
+            <td class="text-center">{% if m.afetou_caixa_fisico %}💵{% else %}🔄{% endif %}</td>
+            <td class="small fw-semibold">{{ m.numero_autenticacao }}</td>
+            <td class="small text-muted">{{ m.usuario.get_full_name|default:m.usuario.username|default:"-" }}</td>
+            <td>
+              {% if m.estornado %}
+                <span class="badge bg-danger">Estornado</span>
+                <br><small class="text-muted">{{ m.estornado_por.get_full_name|default:"" }} · {{ m.estornado_em|date:"H:i" }}</small>
+                {% if m.motivo_estorno %}<br><small class="fst-italic">{{ m.motivo_estorno }}</small>{% endif %}
+              {% else %}
+                <span class="badge bg-success">OK</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" class="text-center text-muted py-3">Nenhum lançamento neste dia.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% else %}
+  <div class="alert alert-warning text-center py-3">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    Nenhum caixa encontrado para {{ data|date:"d/m/Y" }}.
+  </div>
+  {% endif %}
+
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-calendar3" style="font-size:3rem;"></i>
+  <p class="mt-2">Selecione uma data para consultar os lançamentos.</p>
+</div>
+{% endif %}
+{% endblock %}

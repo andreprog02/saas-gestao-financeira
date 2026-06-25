@@ -171,6 +171,35 @@ def nova_proposta(request):
             tem_mora = request.POST.get("tem_juros_mora") == "on"
             mora_pct = Decimal(request.POST.get("juros_mora_percent", "2.00").replace(",", "."))
 
+            # Finalidade e IOF
+            finalidade = request.POST.get("finalidade", "CREDITO_PESSOAL")
+            tem_iof = request.POST.get("tem_iof") == "on"
+
+            # Cálculo IOF
+            valor_iof = Decimal("0.00")
+            valor_bruto = valor
+            if tem_iof:
+                iof_diario = Decimal("0.0082")  # 0,0082% a.d.
+                iof_adicional = Decimal("0.38")  # 0,38%
+                dias_contrato = qtd * 30  # aprox
+                if dias_contrato > 365:
+                    dias_contrato = 365
+                iof_calc = valor * (iof_diario / Decimal("100")) * Decimal(str(dias_contrato))
+                iof_adic = valor * (iof_adicional / Decimal("100"))
+                valor_iof = (iof_calc + iof_adic).quantize(Decimal("0.01"))
+                valor_bruto = valor + valor_iof
+
+            # Débitos extras
+            debitos_str = request.POST.get("valor_debitos_extras", "0")
+            debitos_limpo = debitos_str.replace("R$", "").replace(" ", "").strip()
+            if "," in debitos_limpo and "." in debitos_limpo:
+                debitos_limpo = debitos_limpo.replace(".", "").replace(",", ".")
+            elif "," in debitos_limpo:
+                debitos_limpo = debitos_limpo.replace(",", ".")
+            valor_debitos = Decimal(debitos_limpo or "0").quantize(Decimal("0.01"))
+            desc_debitos = request.POST.get("descricao_debitos", "").strip()
+            valor_bruto += valor_debitos
+
             if valor <= 0:
                 raise ValueError("Valor deve ser maior que zero.")
 
@@ -200,6 +229,12 @@ def nova_proposta(request):
                     multa_percent=multa_pct if tem_multa else Decimal("0"),
                     tem_juros_mora=tem_mora,
                     juros_mora_percent=mora_pct if tem_mora else Decimal("0"),
+                    finalidade=finalidade,
+                    tem_iof=tem_iof,
+                    valor_iof=valor_iof,
+                    valor_debitos_extras=valor_debitos,
+                    descricao_debitos=desc_debitos,
+                    valor_bruto=valor_bruto,
                 )
 
                 # Garantias
@@ -546,7 +581,7 @@ def avancar_etapa(request, proposta_id):
 @login_required
 @transaction.atomic
 def devolver_etapa(request, proposta_id):
-    """Devolve a proposta para a etapa anterior."""
+    """Devolve a proposta para etapa anterior ou para etapa específica."""
     proposta = get_object_or_404(PropostaEmprestimo, id=proposta_id)
     etapa_ativa = proposta.etapa_atual_obj
 
@@ -554,10 +589,16 @@ def devolver_etapa(request, proposta_id):
         return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
 
     motivo = request.POST.get("motivo", "Sem motivo informado")
-    anterior = _etapa_anterior(etapa_ativa.etapa)
+    devolver_para = request.POST.get("devolver_para", "")
 
-    if not anterior:
-        messages.error(request, "Não é possível devolver da primeira etapa.")
+    # Se especificou destino, usa; senão, volta uma etapa
+    if devolver_para:
+        destino = devolver_para
+    else:
+        destino = _etapa_anterior(etapa_ativa.etapa)
+
+    if not destino:
+        messages.error(request, "Não é possível devolver desta etapa.")
         return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
 
     # Finaliza etapa atual como devolvida
@@ -565,16 +606,16 @@ def devolver_etapa(request, proposta_id):
     etapa_ativa.ativa = False
     etapa_ativa.finalizado_em = timezone.now()
     etapa_ativa.responsavel = request.user
-    etapa_ativa.parecer = f"DEVOLVIDO: {motivo}"
+    etapa_ativa.parecer = f"DEVOLVIDO para {destino}: {motivo}"
     etapa_ativa.save()
 
-    # Cria nova etapa na posição anterior
+    # Cria nova etapa no destino
     nova = EtapaProposta.objects.create(
         proposta=proposta,
-        etapa=anterior,
+        etapa=destino,
     )
     _criar_checklist_para_etapa(nova)
-    proposta.status = anterior
+    proposta.status = destino
     proposta.save()
 
     messages.warning(request, f"Proposta devolvida para: {nova.get_etapa_display()}")
@@ -1037,7 +1078,7 @@ def emitir_promissoria_pdf(request, proposta_id):
 @login_required
 @transaction.atomic
 def votar_comite(request, proposta_id):
-    """Registra voto do membro do comitê com validação de senha."""
+    """Registra voto do membro do comitê. Deferir avança, Indeferir nega."""
     from .models import VotoComite
     from django.contrib.auth import authenticate
 
@@ -1046,14 +1087,12 @@ def votar_comite(request, proposta_id):
     if request.method != "POST":
         return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
 
-    # Valida senha do usuário
     senha = request.POST.get("senha", "")
     user = authenticate(username=request.user.username, password=senha)
     if not user:
         messages.error(request, "Senha inválida. Voto não registrado.")
         return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
 
-    # Verifica se já votou
     if VotoComite.objects.filter(proposta=proposta, usuario=request.user).exists():
         messages.warning(request, "Você já registrou seu voto nesta proposta.")
         return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
@@ -1071,6 +1110,44 @@ def votar_comite(request, proposta_id):
         decisao=decisao,
         observacoes=observacoes,
     )
+
+    etapa_ativa = proposta.etapa_atual_obj
+
+    if decisao == "DEFERIDO" and etapa_ativa:
+        # Aprova a etapa e avança para Formalização
+        etapa_ativa.resultado = EtapaProposta.Resultado.APROVADO
+        etapa_ativa.ativa = False
+        etapa_ativa.finalizado_em = timezone.now()
+        etapa_ativa.responsavel = request.user
+        etapa_ativa.parecer = f"Deferido: {observacoes}" if observacoes else "Deferido pelo comitê"
+        etapa_ativa.save()
+
+        proxima = _proxima_etapa(etapa_ativa.etapa, proposta)
+        if proxima:
+            nova = EtapaProposta.objects.create(proposta=proposta, etapa=proxima)
+            _criar_checklist_para_etapa(nova)
+            proposta.status = proxima
+            proposta.save()
+            messages.success(request, f"Voto DEFERIDO — Avançou para {nova.get_etapa_display()}.")
+        return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+    elif decisao == "INDEFERIDO" and etapa_ativa:
+        # Nega a proposta inteira
+        etapa_ativa.resultado = EtapaProposta.Resultado.NEGADO
+        etapa_ativa.ativa = False
+        etapa_ativa.finalizado_em = timezone.now()
+        etapa_ativa.responsavel = request.user
+        etapa_ativa.parecer = f"Indeferido: {observacoes}" if observacoes else "Indeferido pelo comitê"
+        etapa_ativa.save()
+
+        proposta.status = "NEGADO"
+        proposta.parecer_analise = etapa_ativa.parecer
+        proposta.usuario_aprovador = request.user
+        proposta.data_analise = timezone.now()
+        proposta.save()
+
+        messages.info(request, "Voto INDEFERIDO — Proposta negada.")
+        return redirect("emprestimos:painel_esteira")
 
     messages.success(request, f"Voto registrado: {decisao}")
     return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
@@ -1180,3 +1257,73 @@ def bens_cliente_ajax(request):
         i["tipo_display"] = dict(BemImovel.TIPO_CHOICES).get(i["tipo"], i["tipo"])
 
     return JsonResponse({"moveis": moveis, "imoveis": imoveis})
+
+# ==============================================================================
+# EDITAR PROPOSTA
+# ==============================================================================
+
+@login_required
+@transaction.atomic
+def editar_proposta(request, proposta_id):
+    """Permite editar os dados de uma proposta — apenas em CAPTACAO."""
+    from .views import to_decimal
+
+    proposta = get_object_or_404(PropostaEmprestimo, id=proposta_id)
+
+    # Só edita se estiver em CAPTACAO ou DOCUMENTACAO
+    if proposta.status not in ("CAPTACAO", "DOCUMENTACAO"):
+        messages.error(request, "Só é possível editar propostas nas etapas iniciais.")
+        return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+    if request.method == "POST":
+        try:
+            proposta.valor_solicitado = to_decimal(request.POST.get("valor", "0"))
+            proposta.taxa_juros = Decimal(request.POST.get("taxa", "0").replace(",", "."))
+            proposta.qtd_parcelas = int(request.POST.get("qtd_parcelas", 1))
+            proposta.primeiro_vencimento = request.POST.get("vencimento", proposta.primeiro_vencimento)
+            proposta.finalidade = request.POST.get("finalidade", proposta.finalidade)
+            proposta.observacoes = request.POST.get("observacoes", "")
+
+            # Multa e mora
+            proposta.tem_multa = request.POST.get("tem_multa") == "on"
+            proposta.multa_percent = Decimal(request.POST.get("multa_percent", "2.00").replace(",", "."))
+            proposta.tem_juros_mora = request.POST.get("tem_juros_mora") == "on"
+            proposta.juros_mora_percent = Decimal(request.POST.get("juros_mora_percent", "2.00").replace(",", "."))
+
+            # IOF
+            tem_iof = request.POST.get("tem_iof") == "on"
+            proposta.tem_iof = tem_iof
+            valor = proposta.valor_solicitado
+            qtd = proposta.qtd_parcelas
+            valor_iof = Decimal("0.00")
+            if tem_iof:
+                dias = min(qtd * 30, 365)
+                iof_calc = valor * (Decimal("0.000082")) * Decimal(str(dias))
+                iof_adic = valor * (Decimal("0.0038"))
+                valor_iof = (iof_calc + iof_adic).quantize(Decimal("0.01"))
+            proposta.valor_iof = valor_iof
+
+            # Débitos
+            deb_str = request.POST.get("valor_debitos_extras", "0")
+            deb_limpo = deb_str.replace("R$", "").replace(" ", "").strip()
+            if "," in deb_limpo and "." in deb_limpo:
+                deb_limpo = deb_limpo.replace(".", "").replace(",", ".")
+            elif "," in deb_limpo:
+                deb_limpo = deb_limpo.replace(",", ".")
+            proposta.valor_debitos_extras = Decimal(deb_limpo or "0").quantize(Decimal("0.01"))
+            proposta.descricao_debitos = request.POST.get("descricao_debitos", "")
+            proposta.valor_bruto = valor + valor_iof + proposta.valor_debitos_extras
+
+            proposta.save()
+            messages.success(request, "Proposta atualizada com sucesso.")
+            return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+        except (ValueError, Exception) as e:
+            messages.error(request, str(e))
+
+    clientes = Cliente.objects.all().order_by("nome_completo")
+    return render(request, "emprestimos/esteira/editar_proposta.html", {
+        "proposta": proposta,
+        "clientes": clientes,
+        "finalidades": PropostaEmprestimo.FINALIDADE_CHOICES,
+    })

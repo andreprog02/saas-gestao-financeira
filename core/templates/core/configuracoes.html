@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="card shadow-sm">
+      <div class="card-header bg-dark text-white">
+        <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Configurações da Empresa</h5>
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">
+          Estes dados aparecem nos contratos, notas promissórias, cartas de cobrança e demais documentos gerados pelo sistema.
+        </p>
+
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+
+          <!-- IDENTIDADE -->
+          <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-building me-1"></i>Identidade da Empresa</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Razão Social *</label>
+              <input type="text" name="nome_empresa" class="form-control" value="{{ config.nome_empresa }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nome Fantasia</label>
+              <input type="text" name="nome_fantasia" class="form-control" value="{{ config.nome_fantasia }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">CNPJ</label>
+              <input type="text" name="cnpj" class="form-control" id="cnpj-conf" value="{{ config.cnpj }}" placeholder="00.000.000/0000-00">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Inscrição Estadual</label>
+              <input type="text" name="inscricao_estadual" class="form-control" value="{{ config.inscricao_estadual }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Logo da Empresa</label>
+              <input type="file" name="logo" class="form-control" accept=".png,.jpg,.jpeg">
+              {% if config.logo %}
+              <div class="mt-2">
+                <img src="{{ config.logo.url }}" alt="Logo" style="max-height:60px;" class="border rounded p-1">
+                <small class="text-muted d-block">Logo atual</small>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- ENDEREÇO -->
+          <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-geo-alt me-1"></i>Endereço</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Logradouro</label>
+              <input type="text" name="logradouro" class="form-control" value="{{ config.logradouro }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold">Número</label>
+              <input type="text" name="numero" class="form-control" value="{{ config.numero }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Complemento</label>
+              <input type="text" name="complemento" class="form-control" value="{{ config.complemento }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Bairro</label>
+              <input type="text" name="bairro" class="form-control" value="{{ config.bairro }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Cidade</label>
+              <input type="text" name="cidade" class="form-control" value="{{ config.cidade }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold">UF</label>
+              <input type="text" name="uf" class="form-control" value="{{ config.uf }}" maxlength="2" style="text-transform:uppercase;">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">CEP</label>
+              <input type="text" name="cep" class="form-control" value="{{ config.cep }}">
+            </div>
+          </div>
+
+          <!-- CONTATO -->
+          <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-telephone me-1"></i>Contato</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Telefone</label>
+              <input type="text" name="telefone" class="form-control" value="{{ config.telefone }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Telefone 2</label>
+              <input type="text" name="telefone2" class="form-control" value="{{ config.telefone2 }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">E-mail</label>
+              <input type="email" name="email" class="form-control" value="{{ config.email }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Site</label>
+              <input type="url" name="site" class="form-control" value="{{ config.site }}" placeholder="https://">
+            </div>
+          </div>
+
+          <!-- DOCUMENTOS -->
+          <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-file-earmark-text me-1"></i>Documentos (Contratos e PDFs)</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nome do Representante Legal</label>
+              <input type="text" name="nome_representante" class="form-control" value="{{ config.nome_representante }}" placeholder="Ex: João da Silva">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Cargo do Representante</label>
+              <input type="text" name="cargo_representante" class="form-control" value="{{ config.cargo_representante }}" placeholder="Ex: Diretor">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Foro / Comarca</label>
+              <input type="text" name="foro_comarca" class="form-control" value="{{ config.foro_comarca }}" placeholder="Ex: Rio de Janeiro/RJ">
+            </div>
+          </div>
+
+          <!-- RODAPÉ -->
+          <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-card-text me-1"></i>Rodapé dos Documentos</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Rodapé Linha 1</label>
+              <input type="text" name="rodape_linha1" class="form-control" value="{{ config.rodape_linha1 }}" placeholder="Ex: Rua das Flores, 123 — Centro — Rio de Janeiro/RJ">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Rodapé Linha 2</label>
+              <input type="text" name="rodape_linha2" class="form-control" value="{{ config.rodape_linha2 }}" placeholder="Ex: Tel: (21) 3333-4444 — contato@empresa.com.br">
+            </div>
+          </div>
+
+          <!-- PREVIEW -->
+          <div class="card bg-light mb-3">
+            <div class="card-body py-2">
+              <small class="text-muted fw-bold">Preview do cabeçalho nos documentos:</small>
+              <div class="border rounded p-3 bg-white mt-2">
+                <div class="d-flex align-items-center gap-3">
+                  {% if config.logo %}
+                  <img src="{{ config.logo.url }}" style="max-height:50px;" alt="Logo">
+                  {% else %}
+                  <div style="width:50px;height:50px;background:#ddd;border-radius:8px;" class="d-flex align-items-center justify-content-center"><i class="bi bi-image text-muted"></i></div>
+                  {% endif %}
+                  <div>
+                    <strong>{{ config.nome_fantasia|default:config.nome_empresa|default:"Nome da Empresa" }}</strong><br>
+                    <small class="text-muted">CNPJ: {{ config.cnpj|default:"00.000.000/0000-00" }} · {{ config.endereco_completo|default:"Endereço não configurado" }}</small>
+                  </div>
+                </div>
+                <hr class="my-2">
+                <small class="text-muted">{{ config.rodape_linha1|default:"Rodapé linha 1" }}<br>{{ config.rodape_linha2|default:"Rodapé linha 2" }}</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="/" class="btn btn-outline-secondary">Voltar</a>
+            <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar Configurações</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var el = document.getElementById('cnpj-conf');
+  if(!el) return;
+  el.addEventListener('input', function(){
+    var v = el.value.replace(/\D/g, '');
+    if(v.length > 2) v = v.slice(0,2)+'.'+v.slice(2);
+    if(v.length > 6) v = v.slice(0,6)+'.'+v.slice(6);
+    if(v.length > 10) v = v.slice(0,10)+'/'+v.slice(10);
+    if(v.length > 15) v = v.slice(0,15)+'-'+v.slice(15);
+    el.value = v.slice(0,18);
+  });
+})();
+</script>
+{% endblock %}

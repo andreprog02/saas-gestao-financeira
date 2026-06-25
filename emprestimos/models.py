@@ -266,6 +266,47 @@ class PropostaEmprestimo(models.Model):
     taxa_juros = models.DecimalField(max_digits=6, decimal_places=2)
     primeiro_vencimento = models.DateField()
 
+    # Finalidade
+    FINALIDADE_CHOICES = [
+        ("CREDITO_PESSOAL", "Crédito Pessoal"),
+        ("CAPITAL_GIRO", "Capital de Giro"),
+        ("FINANCIAMENTO", "Financiamento"),
+        ("REFINANCIAMENTO", "Refinanciamento"),
+        ("RENEGOCIACAO", "Renegociação"),
+        ("OUTRO", "Outro"),
+    ]
+    finalidade = models.CharField(
+        "Finalidade", max_length=20,
+        choices=FINALIDADE_CHOICES, default="CREDITO_PESSOAL",
+    )
+
+    # IOF
+    tem_iof = models.BooleanField("Cobrar IOF?", default=True)
+    iof_aliquota = models.DecimalField(
+        "Alíquota IOF (%)", max_digits=6, decimal_places=4, default=Decimal("0.0082"),
+        help_text="IOF diário padrão: 0,0082% a.d. + 0,38% adicional",
+    )
+    iof_adicional = models.DecimalField(
+        "IOF Adicional (%)", max_digits=5, decimal_places=2, default=Decimal("0.38"),
+    )
+    valor_iof = models.DecimalField(
+        "Valor IOF (R$)", max_digits=12, decimal_places=2, default=Decimal("0.00"),
+    )
+
+    # Débitos extras
+    valor_debitos_extras = models.DecimalField(
+        "Débitos Extras (R$)", max_digits=12, decimal_places=2, default=Decimal("0.00"),
+    )
+    descricao_debitos = models.CharField(
+        "Descrição Débitos Extras", max_length=200, blank=True, default="",
+    )
+
+    # Valor bruto (solicitado + IOF + extras)
+    valor_bruto = models.DecimalField(
+        "Valor Bruto (R$)", max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Valor total do contrato = solicitado + IOF + extras",
+    )
+
     # Multa e Juros de Mora
     tem_multa = models.BooleanField("Aplicar Multa por Atraso?", default=True)
     multa_percent = models.DecimalField(

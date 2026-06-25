@@ -93,7 +93,36 @@
             <span class="text-muted">Solicitante:</span><br>
             <strong>{{ proposta.usuario_solicitante|default:"-" }}</strong>
           </div>
+          {% if proposta.finalidade %}
+          <div class="col-6 mb-2">
+            <span class="text-muted">Finalidade:</span><br>
+            <strong>{{ proposta.get_finalidade_display }}</strong>
+          </div>
+          {% endif %}
         </div>
+        {% if proposta.tem_iof or proposta.valor_debitos_extras > 0 %}
+        <div class="row small mt-2">
+          {% if proposta.tem_iof %}
+          <div class="col-4">
+            <span class="text-muted">IOF:</span><br>
+            <strong class="text-danger">R$ {{ proposta.valor_iof|floatformat:2 }}</strong>
+          </div>
+          {% endif %}
+          {% if proposta.valor_debitos_extras > 0 %}
+          <div class="col-4">
+            <span class="text-muted">Débitos Extras:</span><br>
+            <strong class="text-danger">R$ {{ proposta.valor_debitos_extras|floatformat:2 }}</strong>
+            {% if proposta.descricao_debitos %}<br><small class="text-muted">{{ proposta.descricao_debitos }}</small>{% endif %}
+          </div>
+          {% endif %}
+          {% if proposta.valor_bruto %}
+          <div class="col-4">
+            <span class="text-muted">Valor Bruto:</span><br>
+            <strong class="text-primary">R$ {{ proposta.valor_bruto|floatformat:2 }}</strong>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
         {% if proposta.observacoes %}
         <div class="mt-2 small">
           <span class="text-muted">Observações:</span><br>
@@ -166,6 +195,13 @@
         </div>
 
         <div class="d-flex gap-2 flex-wrap">
+          <!-- EDITAR PROPOSTA (só em CAPTACAO/DOCUMENTACAO) -->
+          {% if etapa_ativa.etapa == 'CAPTACAO' or etapa_ativa.etapa == 'DOCUMENTACAO' %}
+          <a href="{% url 'emprestimos:esteira_editar' proposta.id %}" class="btn btn-primary">
+            <i class="bi bi-pencil me-1"></i>Editar Proposta
+          </a>
+          {% endif %}
+
           <!-- AVANÇAR (não aparece no COMITE — usa Deferir/Indeferir) -->
           {% if etapa_ativa.etapa != 'COMITE' %}
           <form method="post" action="{% url 'emprestimos:esteira_avancar' proposta.id %}" class="d-inline">
@@ -203,6 +239,17 @@
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Devolver para qual etapa?</label>
+                <select name="devolver_para" class="form-select">
+                  <option value="">Etapa anterior (padrão)</option>
+                  <option value="CAPTACAO">Captação (editar proposta)</option>
+                  <option value="DOCUMENTACAO">Documentação</option>
+                  {% if etapa_ativa.etapa != 'ANALISE_CREDITO' %}
+                  <option value="ANALISE_CREDITO">Análise de Crédito</option>
+                  {% endif %}
+                </select>
+              </div>
               <label class="form-label fw-semibold">Motivo da devolução</label>
               <textarea name="motivo" class="form-control" rows="3" required
                         placeholder="Informe o que precisa ser corrigido..."></textarea>

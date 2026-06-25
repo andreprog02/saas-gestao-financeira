@@ -9,9 +9,20 @@
       <i class="bi bi-unlock me-1"></i>Abrir Caixa
     </a>
     {% elif caixa_hoje.status == 'ABERTO' %}
+    <a href="{% url 'financeiro:caixa_lancamento' %}" class="btn btn-primary btn-sm">
+      <i class="bi bi-cash-coin me-1"></i>Lançamentos
+    </a>
     <a href="{% url 'financeiro:caixa_fechar' %}" class="btn btn-danger btn-sm">
       <i class="bi bi-lock me-1"></i>Fechar Caixa
     </a>
+    {% elif caixa_hoje.status == 'FECHADO' %}
+    <form method="post" action="{% url 'financeiro:caixa_reabrir' %}" class="d-inline">
+      {% csrf_token %}
+      <input type="hidden" name="senha" id="senha-reabrir" value="">
+      <button type="button" class="btn btn-warning btn-sm" onclick="var s=prompt('Senha para reabrir:'); if(s){document.getElementById('senha-reabrir').value=s; this.closest('form').submit();}">
+        <i class="bi bi-unlock me-1"></i>Reabrir
+      </button>
+    </form>
     {% endif %}
   </div>
 </div>
