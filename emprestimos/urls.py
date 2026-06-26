@@ -44,6 +44,14 @@ urlpatterns = [
     path("esteira/<int:proposta_id>/votar/", views_esteira.votar_comite, name="esteira_votar"),
     path("esteira/<int:proposta_id>/contrato-pdf/", views_esteira.emitir_contrato_pdf, name="esteira_contrato_pdf"),
     path("esteira/<int:proposta_id>/promissoria-pdf/", views_esteira.emitir_promissoria_pdf, name="esteira_promissoria_pdf"),
+
+    # Cheques de garantia
+    path("esteira/<int:proposta_id>/cheque/adicionar/", views_esteira.adicionar_cheque, name="adicionar_cheque"),
+    path("esteira/cheque/<int:cheque_id>/conferir/", views_esteira.conferir_cheque, name="conferir_cheque"),
+    path("esteira/cheque/<int:cheque_id>/excluir/", views_esteira.excluir_cheque, name="excluir_cheque"),
+
+    # Dossiê PDF
+    path("esteira/<int:proposta_id>/dossie/", views_esteira.gerar_dossie_pdf, name="esteira_dossie_pdf"),
     path("esteira/checklist/<int:item_id>/", views_esteira.marcar_checklist, name="esteira_checklist"),
     path("esteira/simular/", views_esteira.simular_ajax, name="esteira_simular"),
     path("esteira/bens-cliente/", views_esteira.bens_cliente_ajax, name="esteira_bens_cliente"),

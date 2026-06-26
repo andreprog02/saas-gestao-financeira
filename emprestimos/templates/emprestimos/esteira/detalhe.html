@@ -650,38 +650,42 @@
           <span class="badge bg-dark fs-6 ms-1">{{ contrato_formal.numero_formatado }}</span>
         </div>
 
-        <table class="table table-sm mb-3">
-          <tr>
-            <td><i class="bi bi-file-earmark-text me-1"></i>Contrato de Empréstimo</td>
-            <td class="text-end">
-              {% if contrato_formal.contrato_emitido %}
-                <span class="badge bg-success me-1">Emitido {{ contrato_formal.contrato_emitido_em|date:"d/m/Y" }}</span>
-              {% endif %}
-              <a href="{% url 'emprestimos:esteira_contrato_pdf' proposta.id %}" class="btn btn-sm btn-outline-danger py-0">
-                <i class="bi bi-file-pdf me-1"></i>{% if contrato_formal.contrato_emitido %}Reimprimir{% else %}Emitir{% endif %}
-              </a>
-            </td>
-          </tr>
-          <tr>
-            <td><i class="bi bi-cash-coin me-1"></i>Nota Promissória</td>
-            <td class="text-end">
-              {% if contrato_formal.promissoria_emitida %}
-                <span class="badge bg-success me-1">Emitida {{ contrato_formal.promissoria_emitida_em|date:"d/m/Y" }}</span>
-              {% endif %}
-              <a href="{% url 'emprestimos:esteira_promissoria_pdf' proposta.id %}" class="btn btn-sm btn-outline-danger py-0">
-                <i class="bi bi-file-pdf me-1"></i>{% if contrato_formal.promissoria_emitida %}Reimprimir{% else %}Emitir{% endif %}
-              </a>
-            </td>
-          </tr>
-        </table>
+        <div class="d-grid gap-2">
+          <a href="{% url 'emprestimos:esteira_contrato_pdf' proposta.id %}" class="btn btn-danger" target="_blank">
+            <i class="bi bi-file-earmark-text me-2"></i>
+            {% if contrato_formal.contrato_emitido %}Reimprimir Contrato{% else %}Emitir Contrato{% endif %}
+          </a>
+          <a href="{% url 'emprestimos:esteira_promissoria_pdf' proposta.id %}" class="btn btn-danger" target="_blank">
+            <i class="bi bi-cash-coin me-2"></i>
+            {% if contrato_formal.promissoria_emitida %}Reimprimir Nota Promissória{% else %}Emitir Nota Promissória{% endif %}
+          </a>
+          <a href="{% url 'emprestimos:esteira_dossie_pdf' proposta.id %}" class="btn btn-danger" target="_blank">
+            <i class="bi bi-file-earmark-pdf me-2"></i>Gerar Dossiê da Proposta
+          </a>
+          <a href="#" class="btn btn-dark" onclick="abrirTodosPDFs(); return false;">
+            <i class="bi bi-download me-2"></i>Baixar Todos os Documentos
+          </a>
+        </div>
+
+        <script>
+        function abrirTodosPDFs(){
+          window.open("{% url 'emprestimos:esteira_contrato_pdf' proposta.id %}", '_blank');
+          setTimeout(function(){ window.open("{% url 'emprestimos:esteira_promissoria_pdf' proposta.id %}", '_blank'); }, 500);
+          setTimeout(function(){ window.open("{% url 'emprestimos:esteira_dossie_pdf' proposta.id %}", '_blank'); }, 1000);
+        }
+        </script>
+
         {% else %}
         <p class="small text-muted mb-3">Nenhum contrato emitido ainda.</p>
-        <div class="d-flex gap-2">
-          <a href="{% url 'emprestimos:esteira_contrato_pdf' proposta.id %}" class="btn btn-danger flex-fill">
-            <i class="bi bi-file-earmark-text me-1"></i>Emitir Contrato
+        <div class="d-grid gap-2">
+          <a href="{% url 'emprestimos:esteira_contrato_pdf' proposta.id %}" class="btn btn-danger">
+            <i class="bi bi-file-earmark-text me-2"></i>Emitir Contrato
           </a>
-          <a href="{% url 'emprestimos:esteira_promissoria_pdf' proposta.id %}" class="btn btn-outline-danger flex-fill">
-            <i class="bi bi-cash-coin me-1"></i>Emitir Promissória
+          <a href="{% url 'emprestimos:esteira_promissoria_pdf' proposta.id %}" class="btn btn-danger">
+            <i class="bi bi-cash-coin me-2"></i>Emitir Nota Promissória
+          </a>
+          <a href="{% url 'emprestimos:esteira_dossie_pdf' proposta.id %}" class="btn btn-danger" target="_blank">
+            <i class="bi bi-file-earmark-pdf me-2"></i>Gerar Dossiê da Proposta
           </a>
         </div>
         {% endif %}
@@ -692,7 +696,236 @@
         </div>
       </div>
     </div>
+
+    <!-- CHEQUES DE GARANTIA (coluna esquerda — mais espaço) -->
+    {% with cheques_garantia=proposta.cheques_garantia.all %}
+    <div class="card shadow-sm mb-3 border-info">
+      <div class="card-header py-2 bg-info text-white d-flex justify-content-between">
+        <strong><i class="bi bi-card-text me-1"></i>Cheques de Garantia</strong>
+        {% if cheques_garantia %}<span class="badge bg-white text-dark">{{ cheques_garantia.count }} cheque(s)</span>{% endif %}
+      </div>
+      <div class="card-body">
+
+        <!-- CONFIGURAÇÃO RÁPIDA -->
+        <div class="card bg-light p-3 mb-3">
+          <h6 class="fw-bold small mb-2"><i class="bi bi-lightning me-1"></i>Preenchimento Automático</h6>
+
+          <div class="row g-2 mb-2">
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Emitente</label>
+              <select id="tipo-emitente" class="form-select form-select-sm" onchange="trocarEmitente()">
+                <option value="cliente">O próprio cliente</option>
+                <option value="outro">Outra pessoa (buscar)</option>
+              </select>
+            </div>
+            <div class="col-md-4" id="campo-busca-emitente" style="display:none;">
+              <label class="form-label small fw-semibold">Buscar</label>
+              <select id="sel-emitente-outro" class="form-select form-select-sm" onchange="selecionarEmitente()">
+                <option value="">Selecione...</option>
+                {% for c in clientes %}
+                <option value="{{ c.id }}" data-nome="{{ c.nome_completo }}" data-cpf="{{ c.cpf }}">{{ c.nome_completo }} ({{ c.cpf }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Emitente</label>
+              <input type="text" id="auto-emitente" class="form-control form-control-sm" value="{{ proposta.cliente.nome_completo }}" readonly>
+              <input type="hidden" id="auto-cpf" value="{{ proposta.cliente.cpf }}">
+            </div>
+          </div>
+
+          <div class="row g-2 mb-2">
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">Cód. Banco</label>
+              <input type="text" id="auto-banco-cod" class="form-control form-control-sm" placeholder="341" maxlength="4" oninput="buscarBanco()">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Banco</label>
+              <input type="text" id="auto-banco-nome" class="form-control form-control-sm" readonly placeholder="Nome do banco">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">Agência</label>
+              <input type="text" id="auto-agencia" class="form-control form-control-sm" placeholder="7438">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Conta Corrente</label>
+              <input type="text" id="auto-conta" class="form-control form-control-sm" placeholder="13679-3">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">Nº Inicial</label>
+              <input type="text" id="auto-num-inicio" class="form-control form-control-sm" placeholder="001">
+            </div>
+          </div>
+
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Modo</label>
+              <select id="modo-cheque" class="form-select form-select-sm" onchange="gerarCheques()">
+                <option value="prestacao" selected>Um cheque por prestação</option>
+                <option value="total">Um cheque (valor total)</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <button type="button" class="btn btn-info btn-sm w-100 mt-4" onclick="gerarCheques()">
+                <i class="bi bi-lightning me-1"></i>Gerar Cheques
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- LISTA GERADA (editável antes de salvar) -->
+        <form method="post" action="{% url 'emprestimos:adicionar_cheque' proposta.id %}" id="form-cheques">
+          {% csrf_token %}
+          <div id="cheques-gerados"></div>
+          <button type="submit" class="btn btn-success btn-sm w-100 mt-2" id="btn-salvar-cheques" style="display:none;">
+            <i class="bi bi-check-lg me-1"></i>Salvar Todos os Cheques
+          </button>
+        </form>
+
+        <!-- CHEQUES JÁ CADASTRADOS -->
+        {% if cheques_garantia %}
+        <hr>
+        <h6 class="small fw-bold text-muted mb-2">Cheques Cadastrados</h6>
+        <table class="table table-sm table-hover mb-0" style="font-size:0.8rem;">
+          <thead class="table-dark">
+            <tr><th>Banco</th><th>Ag/Conta</th><th>Nº</th><th class="text-end">Valor</th><th>Vencimento</th><th>Emitente</th><th class="text-center">Status</th><th class="text-end"></th></tr>
+          </thead>
+          <tbody>
+            {% for ch in cheques_garantia %}
+            <tr>
+              <td>{{ ch.banco }}</td>
+              <td>{{ ch.agencia }}/{{ ch.conta_corrente }}</td>
+              <td class="fw-semibold">{{ ch.numero_cheque }}</td>
+              <td class="text-end fw-bold">R$ {{ ch.valor|floatformat:2 }}</td>
+              <td>{{ ch.vencimento|date:"d/m/Y" }}</td>
+              <td>{{ ch.emitente }} {% if ch.cpf_emitente %}<small class="text-muted">({{ ch.cpf_emitente }})</small>{% endif %}</td>
+              <td class="text-center">
+                {% if ch.conferido %}<span class="badge bg-success">✓ {{ ch.conferido_por.get_full_name|default:"" }}</span>
+                {% else %}<a href="{% url 'emprestimos:conferir_cheque' ch.id %}" class="badge bg-warning text-dark text-decoration-none">Conferir</a>{% endif %}
+              </td>
+              <td class="text-end">
+                <a href="{% url 'emprestimos:excluir_cheque' ch.id %}" class="btn btn-sm btn-outline-danger py-0"
+                   onclick="return confirm('Remover?')"><i class="bi bi-x"></i></a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+    {% endwith %}
     {% endif %}
+
+<script>
+/* === BANCOS BRASILEIROS === */
+var BANCOS = {
+  '001':'Banco do Brasil','033':'Santander','104':'Caixa Econômica','237':'Bradesco',
+  '341':'Itaú','356':'ABN Amro','389':'Mercantil do Brasil','399':'HSBC',
+  '422':'Safra','453':'Rural','633':'Rendimento','652':'Itaú Unibanco',
+  '707':'Daycoval','741':'BRP','745':'Citibank','748':'Sicredi',
+  '756':'Sicoob','077':'Inter','260':'Nu Pagamentos','336':'C6 Bank',
+  '290':'PagSeguro','380':'PicPay','403':'Cora','212':'Original'
+};
+
+var PARCELAS = {{ parcelas_json|safe }};
+var CLI_NOME = "{{ proposta.cliente.nome_completo }}";
+var CLI_CPF = "{{ proposta.cliente.cpf }}";
+
+function buscarBanco(){
+  var cod = document.getElementById('auto-banco-cod').value.trim();
+  var nome = BANCOS[cod] || '';
+  document.getElementById('auto-banco-nome').value = nome;
+}
+
+function trocarEmitente(){
+  var tipo = document.getElementById('tipo-emitente').value;
+  document.getElementById('campo-busca-emitente').style.display = tipo === 'outro' ? 'block' : 'none';
+  if(tipo === 'cliente'){
+    document.getElementById('auto-emitente').value = CLI_NOME;
+    document.getElementById('auto-cpf').value = CLI_CPF;
+  }
+}
+
+function selecionarEmitente(){
+  var sel = document.getElementById('sel-emitente-outro');
+  var opt = sel.options[sel.selectedIndex];
+  if(opt.value){
+    document.getElementById('auto-emitente').value = opt.dataset.nome;
+    document.getElementById('auto-cpf').value = opt.dataset.cpf;
+  }
+}
+
+function gerarCheques(){
+  var modo = document.getElementById('modo-cheque').value;
+  var banco_cod = document.getElementById('auto-banco-cod').value.trim();
+  var banco_nome = document.getElementById('auto-banco-nome').value || banco_cod;
+  var banco = banco_nome ? banco_nome + ' ' + banco_cod : banco_cod;
+  var agencia = document.getElementById('auto-agencia').value.trim();
+  var conta = document.getElementById('auto-conta').value.trim();
+  var numInicio = parseInt(document.getElementById('auto-num-inicio').value) || 1;
+  var emitente = document.getElementById('auto-emitente').value;
+  var cpf = document.getElementById('auto-cpf').value;
+
+  var container = document.getElementById('cheques-gerados');
+  container.innerHTML = '';
+  var cheques = [];
+
+  if(modo === 'prestacao' && PARCELAS.length > 0){
+    for(var i = 0; i < PARCELAS.length; i++){
+      cheques.push({
+        num: String(numInicio + i).padStart(3, '0'),
+        valor: parseFloat(PARCELAS[i].valor).toFixed(2),
+        vencimento: PARCELAS[i].vencimento,
+      });
+    }
+  } else {
+    var total = 0;
+    for(var i = 0; i < PARCELAS.length; i++) total += parseFloat(PARCELAS[i].valor);
+    cheques.push({
+      num: String(numInicio).padStart(3, '0'),
+      valor: total.toFixed(2),
+      vencimento: PARCELAS.length > 0 ? PARCELAS[PARCELAS.length-1].vencimento : '',
+    });
+  }
+
+  var html = '<table class="table table-sm table-bordered mb-0" style="font-size:0.78rem;">';
+  html += '<thead class="table-info"><tr><th>#</th><th>Banco</th><th>Ag</th><th>Conta</th><th>Nº Cheque</th><th>Valor</th><th>Vencimento</th><th>Emitente</th><th>CPF</th><th></th></tr></thead><tbody>';
+
+  for(var i = 0; i < cheques.length; i++){
+    var c = cheques[i];
+    var fmtVal = parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2});
+    var fmtData = c.vencimento ? c.vencimento.split('-').reverse().join('/') : '';
+
+    html += '<tr>';
+    html += '<td>'+(i+1)+'</td>';
+    html += '<td><input type="text" name="banco_'+i+'" value="'+banco+'" class="form-control form-control-sm p-0 border-0" style="width:90px;"></td>';
+    html += '<td><input type="text" name="agencia_'+i+'" value="'+agencia+'" class="form-control form-control-sm p-0 border-0" style="width:50px;"></td>';
+    html += '<td><input type="text" name="conta_'+i+'" value="'+conta+'" class="form-control form-control-sm p-0 border-0" style="width:70px;"></td>';
+    html += '<td><input type="text" name="numero_cheque_'+i+'" value="'+c.num+'" class="form-control form-control-sm p-0 border-0 fw-bold" style="width:50px;"></td>';
+    html += '<td><input type="text" name="valor_'+i+'" value="'+fmtVal+'" class="form-control form-control-sm p-0 border-0 text-end fw-bold" style="width:80px;"></td>';
+    html += '<td><input type="date" name="vencimento_'+i+'" value="'+c.vencimento+'" class="form-control form-control-sm p-0 border-0" style="width:110px;"></td>';
+    html += '<td><input type="text" name="emitente_'+i+'" value="'+emitente+'" class="form-control form-control-sm p-0 border-0" style="width:120px;"></td>';
+    html += '<td><input type="text" name="cpf_'+i+'" value="'+cpf+'" class="form-control form-control-sm p-0 border-0" style="width:100px;"></td>';
+    html += '<td><button type="button" class="btn btn-sm btn-outline-danger py-0" onclick="this.closest(\'tr\').remove()"><i class="bi bi-x"></i></button></td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+  document.getElementById('btn-salvar-cheques').style.display = 'block';
+}
+
+/* Máscara BRL nos cheques */
+document.querySelectorAll('.cheque-brl').forEach(function(el){
+  el.addEventListener('input', function(){
+    var v = el.value.replace(/\D/g, '');
+    if(!v){ el.value = ''; return; }
+    var n = parseInt(v,10), r = (n/100).toFixed(2), p = r.split('.');
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    el.value = p.join(',');
+  });
+});
+</script>
 
     <!-- COMITÊ: DADOS COMPLETOS + CONTRATOS EM ABERTO + HISTÓRICO + VOTAÇÃO -->
     {% if is_comite %}

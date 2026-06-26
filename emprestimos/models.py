@@ -711,3 +711,38 @@ class GarantiaProposta(models.Model):
         if self.tipo == "BEM_IMOVEL" and self.bem_imovel:
             return f"Imóvel: {self.bem_imovel.get_tipo_display()} — {self.bem_imovel.matricula}"
         return f"{self.get_tipo_display()}: {self.descricao}"
+
+class ChequeGarantia(models.Model):
+    """Cheques cadastrados na formalização como garantia do contrato."""
+    proposta = models.ForeignKey(PropostaEmprestimo, on_delete=models.CASCADE, related_name="cheques_garantia")
+
+    banco = models.CharField("Banco", max_length=50)
+    agencia = models.CharField("Agência", max_length=10)
+    conta_corrente = models.CharField("Conta Corrente", max_length=20)
+    numero_cheque = models.CharField("Nº Cheque", max_length=20)
+    valor = models.DecimalField("Valor (R$)", max_digits=12, decimal_places=2)
+    vencimento = models.DateField("Vencimento")
+    emitente = models.CharField("Emitente", max_length=150)
+    cpf_emitente = models.CharField("CPF Emitente", max_length=14, blank=True, default="")
+
+    # Conferência
+    conferido = models.BooleanField("Conferido?", default=False)
+    conferido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="cheques_conferidos",
+    )
+    conferido_em = models.DateTimeField(null=True, blank=True)
+
+    registrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="cheques_registrados",
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["vencimento"]
+        verbose_name = "Cheque de Garantia"
+        verbose_name_plural = "Cheques de Garantia"
+
+    def __str__(self):
+        return f"Ch. {self.numero_cheque} — {self.banco} — R$ {self.valor} — {self.vencimento.strftime('%d/%m/%Y')}"

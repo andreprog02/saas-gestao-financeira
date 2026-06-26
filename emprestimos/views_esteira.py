@@ -407,6 +407,23 @@ def detalhe_proposta(request, proposta_id):
     contrato_formal = ContratoFormalizado.objects.filter(proposta=proposta).first()
     is_formalizacao = etapa_ativa and etapa_ativa.etapa == "FORMALIZACAO"
 
+    # Dados para auto-preenchimento de cheques
+    parcelas_json = "[]"
+    if is_formalizacao:
+        from .services import simular
+        try:
+            _, parc_val, _, _, tabela = simular(
+                proposta.valor_solicitado, proposta.qtd_parcelas,
+                proposta.taxa_juros, proposta.primeiro_vencimento,
+            )
+            import json
+            parcelas_json = json.dumps([
+                {"numero": p.numero, "vencimento": p.vencimento.strftime("%Y-%m-%d"), "valor": str(p.valor)}
+                for p in tabela
+            ])
+        except Exception:
+            parcelas_json = "[]"
+
     # Garantias
     garantias = proposta.garantias.select_related(
         "avalista", "bem_movel", "bem_imovel"
@@ -537,6 +554,8 @@ def detalhe_proposta(request, proposta_id):
         "docs_tipos": DocumentoCliente.TIPO_CHOICES,
         "contrato_formal": contrato_formal,
         "is_formalizacao": is_formalizacao,
+        "parcelas_json": parcelas_json,
+        "clientes": Cliente.objects.all().order_by("nome_completo") if is_formalizacao else [],
         "garantias": garantias,
         "checklist_formalizacao": checklist_formalizacao,
         "analise_renda": analise_renda,
@@ -1346,3 +1365,310 @@ def editar_proposta(request, proposta_id):
         "clientes": clientes,
         "finalidades": PropostaEmprestimo.FINALIDADE_CHOICES,
     })
+
+
+# ==============================================================================
+# CHEQUES DE GARANTIA NA FORMALIZAÇÃO
+# ==============================================================================
+
+@login_required
+def adicionar_cheque(request, proposta_id):
+    """Adiciona cheque(s) de garantia na formalização — individual ou em lote."""
+    from .models import ChequeGarantia
+
+    proposta = get_object_or_404(PropostaEmprestimo, id=proposta_id)
+
+    if request.method == "POST":
+        def _parse(v):
+            if not v:
+                return Decimal("0")
+            limpo = v.replace("R$", "").replace(" ", "").strip()
+            if "," in limpo and "." in limpo:
+                limpo = limpo.replace(".", "").replace(",", ".")
+            elif "," in limpo:
+                limpo = limpo.replace(",", ".")
+            return Decimal(limpo)
+
+        # Cheques em lote (campos indexados: banco_0, banco_1, ...)
+        idx = 0
+        criados = 0
+        while True:
+            banco = request.POST.get(f"banco_{idx}", "").strip()
+            numero = request.POST.get(f"numero_cheque_{idx}", "").strip()
+            if not banco and not numero:
+                break
+            ChequeGarantia.objects.create(
+                proposta=proposta,
+                banco=banco,
+                agencia=request.POST.get(f"agencia_{idx}", ""),
+                conta_corrente=request.POST.get(f"conta_{idx}", ""),
+                numero_cheque=numero,
+                valor=_parse(request.POST.get(f"valor_{idx}", "0")),
+                vencimento=request.POST.get(f"vencimento_{idx}", timezone.localdate()),
+                emitente=request.POST.get(f"emitente_{idx}", ""),
+                cpf_emitente=request.POST.get(f"cpf_{idx}", ""),
+                registrado_por=request.user,
+            )
+            criados += 1
+            idx += 1
+
+        # Fallback: cheque individual (campos sem índice)
+        if criados == 0:
+            banco = request.POST.get("banco", "").strip()
+            if banco:
+                ChequeGarantia.objects.create(
+                    proposta=proposta,
+                    banco=banco,
+                    agencia=request.POST.get("agencia", ""),
+                    conta_corrente=request.POST.get("conta_corrente", ""),
+                    numero_cheque=request.POST.get("numero_cheque", ""),
+                    valor=_parse(request.POST.get("valor", "0")),
+                    vencimento=request.POST.get("vencimento", timezone.localdate()),
+                    emitente=request.POST.get("emitente", ""),
+                    cpf_emitente=request.POST.get("cpf_emitente", ""),
+                    registrado_por=request.user,
+                )
+                criados = 1
+
+        messages.success(request, f"{criados} cheque(s) cadastrado(s).")
+
+    return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+
+@login_required
+def conferir_cheque(request, cheque_id):
+    """Marca cheque como conferido."""
+    from .models import ChequeGarantia
+
+    cheque = get_object_or_404(ChequeGarantia, id=cheque_id)
+    cheque.conferido = True
+    cheque.conferido_por = request.user
+    cheque.conferido_em = timezone.now()
+    cheque.save()
+    messages.success(request, f"Cheque {cheque.numero_cheque} conferido.")
+    return redirect("emprestimos:esteira_detalhe", proposta_id=cheque.proposta_id)
+
+
+@login_required
+def excluir_cheque(request, cheque_id):
+    """Exclui cheque de garantia."""
+    from .models import ChequeGarantia
+
+    cheque = get_object_or_404(ChequeGarantia, id=cheque_id)
+    proposta_id = cheque.proposta_id
+    cheque.delete()
+    messages.info(request, "Cheque removido.")
+    return redirect("emprestimos:esteira_detalhe", proposta_id=proposta_id)
+
+
+# ==============================================================================
+# PDF DOSSIÊ DA PROPOSTA
+# ==============================================================================
+
+@login_required
+def gerar_dossie_pdf(request, proposta_id):
+    """Gera o dossiê completo da proposta em PDF."""
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+    from reportlab.lib import colors
+    from core.models import ConfiguracaoEmpresa
+    from clientes.models import ConsultaCredito
+    from .models import VotoComite, ContratoFormalizado, ChequeGarantia
+
+    proposta = get_object_or_404(PropostaEmprestimo.objects.select_related("cliente"), id=proposta_id)
+    cli = proposta.cliente
+    cfg = ConfiguracaoEmpresa.get_config()
+    hoje = timezone.localdate()
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="dossie_proposta_{proposta.id}.pdf"'
+
+    doc = SimpleDocTemplate(response, pagesize=A4, topMargin=20*mm, bottomMargin=20*mm,
+                            leftMargin=15*mm, rightMargin=15*mm)
+    styles = getSampleStyleSheet()
+    els = []
+
+    st_titulo = ParagraphStyle("Titulo", parent=styles["Heading1"], fontSize=16, alignment=TA_CENTER, spaceAfter=3*mm)
+    st_sub = ParagraphStyle("Sub", parent=styles["Normal"], fontSize=10, alignment=TA_CENTER, spaceAfter=5*mm, textColor=colors.grey)
+    st_h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=12, spaceBefore=6*mm, spaceAfter=3*mm,
+                           textColor=colors.HexColor("#1a3a5c"), borderWidth=0, borderPadding=0)
+    st_corpo = ParagraphStyle("Corpo", parent=styles["Normal"], fontSize=9, alignment=TA_JUSTIFY, leading=13, spaceAfter=2*mm)
+    st_small = ParagraphStyle("Small", parent=styles["Normal"], fontSize=8, textColor=colors.grey)
+
+    nome_empresa = cfg.nome_fantasia or cfg.nome_empresa or "EMPRESA"
+
+    # === CABEÇALHO ===
+    els.append(Paragraph(f"<b>{nome_empresa}</b>", ParagraphStyle("Emp", parent=styles["Normal"], fontSize=8, alignment=TA_CENTER)))
+    if cfg.cnpj:
+        els.append(Paragraph(f"CNPJ: {cfg.cnpj} — {cfg.endereco_completo}", st_small))
+    els.append(Spacer(1, 3*mm))
+    els.append(Paragraph("DOSSIÊ DE PROPOSTA DE CRÉDITO", st_titulo))
+    els.append(Paragraph(f"Proposta #{proposta.id} — {hoje.strftime('%d/%m/%Y')}", st_sub))
+
+    # === 1. DADOS DO CLIENTE ===
+    els.append(Paragraph("1. DADOS DO CLIENTE", st_h2))
+    dados_cli = [
+        ["Nome:", cli.nome_completo, "CPF:", cli.cpf],
+        ["Identidade:", cli.doc or "—", "Data Nasc.:", cli.data_nascimento.strftime("%d/%m/%Y") if cli.data_nascimento else "—"],
+        ["Profissão:", cli.profissao or "—", "Estado Civil:", cli.get_estado_civil_display() if cli.estado_civil else "—"],
+        ["Telefone:", cli.telefone or "—", "E-mail:", cli.email or "—"],
+        ["Endereço:", f"{cli.logradouro}, {cli.numero} — {cli.bairro}", "Cidade/UF:", f"{cli.cidade}/{cli.uf}"],
+    ]
+    t = Table(dados_cli, colWidths=[70, 170, 70, 170])
+    t.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    els.append(t)
+
+    # === 2. RENDA E PATRIMÔNIO ===
+    els.append(Paragraph("2. RENDA E PATRIMÔNIO", st_h2))
+    renda_bruta = "—"
+    renda_liquida = "—"
+    from clientes.models import DocumentoCliente
+    comp = DocumentoCliente.objects.filter(cliente=cli, tipo="COMP_RENDA").order_by("-ano_referencia", "-mes_referencia").first()
+    if comp and comp.renda_bruta:
+        renda_bruta = f"R$ {comp.renda_bruta:,.2f}"
+    if comp and comp.renda_liquida:
+        renda_liquida = f"R$ {comp.renda_liquida:,.2f}"
+
+    dados_renda = [
+        ["Renda Bruta (comprovante):", renda_bruta, "Renda Líquida (comprovante):", renda_liquida],
+        ["Renda Cadastro:", f"R$ {cli.renda_mensal:,.2f}" if cli.renda_mensal else "—",
+         "Outros Rendimentos:", f"R$ {cli.outros_rendimentos:,.2f}" if cli.outros_rendimentos else "—"],
+    ]
+    t2 = Table(dados_renda, colWidths=[120, 120, 120, 120])
+    t2.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+        ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    els.append(t2)
+
+    # Bens
+    bens_m = cli.bens_moveis.all()
+    bens_i = cli.bens_imoveis.all()
+    if bens_m or bens_i:
+        els.append(Spacer(1, 2*mm))
+        patrimonio = []
+        for bm in bens_m:
+            patrimonio.append(f"Veículo: {bm.get_tipo_display()} — {bm.descricao} {f'(Placa: {bm.placa})' if bm.placa else ''}")
+        for bi in bens_i:
+            patrimonio.append(f"Imóvel: {bi.get_tipo_display()} — {bi.endereco_completo} {f'(Mat: {bi.matricula})' if bi.matricula else ''}")
+        for p in patrimonio:
+            els.append(Paragraph(f"• {p}", st_corpo))
+
+    # === 3. CONSULTA DE CRÉDITO ===
+    els.append(Paragraph("3. CONSULTA DE CRÉDITO", st_h2))
+    consulta = ConsultaCredito.objects.filter(cliente=cli).order_by("-criado_em").first()
+    if consulta:
+        els.append(Paragraph(f"<b>Resultado:</b> {consulta.get_status_display()} — Data: {consulta.criado_em.strftime('%d/%m/%Y')}", st_corpo))
+        if consulta.observacoes:
+            els.append(Paragraph(f"<b>Observações:</b> {consulta.observacoes}", st_corpo))
+        restricoes = consulta.restricoes.all()
+        if restricoes:
+            dados_rest = [["CNPJ", "Empresa", "Valor", "Descrição"]]
+            for r in restricoes:
+                dados_rest.append([r.cnpj_credor or "—", r.nome_credor or "—", f"R$ {r.valor:,.2f}", r.descricao or "—"])
+            dados_rest.append(["", "", f"TOTAL: R$ {consulta.total_restricoes:,.2f}", ""])
+            tr = Table(dados_rest, colWidths=[80, 130, 80, 190])
+            tr.setStyle(TableStyle([
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f8d7da")),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+                ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]))
+            els.append(tr)
+    else:
+        els.append(Paragraph("Nenhuma consulta de crédito registrada.", st_corpo))
+
+    # === 4. SIMULAÇÃO DO EMPRÉSTIMO ===
+    els.append(Paragraph("4. SIMULAÇÃO DO EMPRÉSTIMO", st_h2))
+    from .services import simular
+    try:
+        _, parc, total, _, tabela = simular(proposta.valor_solicitado, proposta.qtd_parcelas, proposta.taxa_juros, proposta.primeiro_vencimento)
+    except Exception:
+        parc = Decimal("0")
+        total = Decimal("0")
+        tabela = []
+
+    dados_sim = [
+        ["Valor Solicitado (líquido):", f"R$ {proposta.valor_solicitado:,.2f}", "Taxa de Juros:", f"{proposta.taxa_juros}% a.m."],
+        ["Finalidade:", proposta.get_finalidade_display() if proposta.finalidade else "—", "Parcelas:", str(proposta.qtd_parcelas)],
+        ["IOF:", f"R$ {proposta.valor_iof:,.2f}" if proposta.tem_iof and proposta.valor_iof else "Não",
+         "Débitos Extras:", f"R$ {proposta.valor_debitos_extras:,.2f}" if proposta.valor_debitos_extras and proposta.valor_debitos_extras > 0 else "—"],
+        ["Valor Bruto (contrato):", f"R$ {proposta.valor_bruto:,.2f}" if proposta.valor_bruto and proposta.valor_bruto > 0 else "—", "Valor da Parcela:", f"R$ {parc:,.2f}"],
+        ["Total a Pagar:", f"R$ {total:,.2f}", "1º Vencimento:", proposta.primeiro_vencimento.strftime("%d/%m/%Y")],
+    ]
+    ts = Table(dados_sim, colWidths=[120, 120, 120, 120])
+    ts.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+        ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    els.append(ts)
+
+    # === 5. GARANTIAS ===
+    els.append(Paragraph("5. GARANTIAS", st_h2))
+    garantias = proposta.garantias.select_related("avalista", "bem_movel", "bem_imovel").all()
+    if garantias:
+        for g in garantias:
+            els.append(Paragraph(f"• {g}", st_corpo))
+    else:
+        els.append(Paragraph("Nenhuma garantia cadastrada.", st_corpo))
+
+    # === 6. SCORE DE CRÉDITO ===
+    if proposta.score_calculado is not None:
+        els.append(Paragraph("6. SCORE DE CRÉDITO", st_h2))
+        els.append(Paragraph(f"<b>Score: {proposta.score_calculado}/1000</b>", st_corpo))
+        if proposta.score_detalhamento and "fatores" in proposta.score_detalhamento:
+            for f in proposta.score_detalhamento["fatores"]:
+                els.append(Paragraph(f"• {f['nome']}: {f['nota']}/1000 → {f['pontos']}pts — {f['detalhe']}", st_corpo))
+
+    # === 7. VOTAÇÃO DO COMITÊ ===
+    els.append(Paragraph("7. VOTAÇÃO DO COMITÊ", st_h2))
+    votos = VotoComite.objects.filter(proposta=proposta).select_related("usuario")
+    if votos:
+        dados_votos = [["Membro", "Decisão", "Data", "Observações"]]
+        for v in votos:
+            dados_votos.append([
+                v.usuario.get_full_name() or v.usuario.username,
+                v.decisao,
+                v.data_voto.strftime("%d/%m/%Y %H:%M") if v.data_voto else "—",
+                v.observacoes or "—",
+            ])
+        tv = Table(dados_votos, colWidths=[120, 70, 100, 190])
+        tv.setStyle(TableStyle([
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d4edda")),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+            ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]))
+        els.append(tv)
+    else:
+        els.append(Paragraph("Nenhum voto registrado.", st_corpo))
+
+    # === RODAPÉ ===
+    els.append(Spacer(1, 10*mm))
+    if cfg.rodape_linha1:
+        els.append(Paragraph(cfg.rodape_linha1, st_small))
+    if cfg.rodape_linha2:
+        els.append(Paragraph(cfg.rodape_linha2, st_small))
+
+    doc.build(els)
+    return response
