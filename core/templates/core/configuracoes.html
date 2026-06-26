@@ -157,6 +157,60 @@
             <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar Configurações</button>
           </div>
         </form>
+
+        <!-- SCORE DE CRÉDITO -->
+        <hr class="my-4">
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="secao" value="score">
+
+          <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-speedometer2 me-1"></i>Score de Crédito — Pesos e Parâmetros</h6>
+          <p class="small text-muted mb-3">Os pesos determinam a importância de cada fator no cálculo do score (0-1000). A soma dos pesos deve ser 100%.</p>
+
+          <div class="row g-3 mb-3">
+            <div class="col">
+              <label class="form-label small fw-semibold">Histórico (%)</label>
+              <input type="number" name="peso_historico" class="form-control" value="{{ score_cfg.peso_historico }}" min="0" max="100">
+            </div>
+            <div class="col">
+              <label class="form-label small fw-semibold">Comprometimento (%)</label>
+              <input type="number" name="peso_comprometimento" class="form-control" value="{{ score_cfg.peso_comprometimento }}" min="0" max="100">
+            </div>
+            <div class="col">
+              <label class="form-label small fw-semibold">Consulta Crédito (%)</label>
+              <input type="number" name="peso_consulta_credito" class="form-control" value="{{ score_cfg.peso_consulta_credito }}" min="0" max="100">
+            </div>
+            <div class="col">
+              <label class="form-label small fw-semibold">Garantias (%)</label>
+              <input type="number" name="peso_garantias" class="form-control" value="{{ score_cfg.peso_garantias }}" min="0" max="100">
+            </div>
+            <div class="col">
+              <label class="form-label small fw-semibold">Perfil (%)</label>
+              <input type="number" name="peso_perfil" class="form-control" value="{{ score_cfg.peso_perfil }}" min="0" max="100">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Comprometimento Ideal (%)</label>
+              <input type="number" name="comprometimento_ideal" class="form-control" value="{{ score_cfg.comprometimento_ideal }}" step="0.01">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Comprometimento Máximo (%)</label>
+              <input type="number" name="comprometimento_maximo" class="form-control" value="{{ score_cfg.comprometimento_maximo }}" step="0.01">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Score Mínimo Aprovação</label>
+              <input type="number" name="score_minimo_aprovacao" class="form-control" value="{{ score_cfg.score_minimo_aprovacao }}" min="0" max="1000">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Score de Atenção</label>
+              <input type="number" name="score_atencao" class="form-control" value="{{ score_cfg.score_atencao }}" min="0" max="1000">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Salvar Score</button>
+        </form>
       </div>
     </div>
   </div>

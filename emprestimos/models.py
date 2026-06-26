@@ -350,6 +350,10 @@ class PropostaEmprestimo(models.Model):
     # Link caso vire empréstimo
     emprestimo_gerado = models.ForeignKey(Emprestimo, on_delete=models.SET_NULL, null=True, blank=True)
 
+    # Score de crédito calculado
+    score_calculado = models.IntegerField("Score de Crédito", null=True, blank=True)
+    score_detalhamento = models.JSONField("Detalhamento Score", default=dict, blank=True)
+
     def save(self, *args, **kwargs):
         # Automacao: Se for criação (sem ID) e o cliente tiver parceiro padrão, puxa os dados
         if not self.pk and self.cliente:

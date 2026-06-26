@@ -69,3 +69,41 @@ class ConfiguracaoEmpresa(models.Model):
         """Retorna a configuração (singleton). Cria se não existir."""
         config, _ = cls.objects.get_or_create(pk=1, defaults={"nome_empresa": "Minha Empresa"})
         return config
+
+
+class ConfiguracaoScore(models.Model):
+    """Pesos e parâmetros do algoritmo de score de crédito."""
+
+    # === PESOS (somam 100%) ===
+    peso_historico = models.IntegerField("Peso Histórico Pagamento (%)", default=30)
+    peso_comprometimento = models.IntegerField("Peso Comprometimento Renda (%)", default=20)
+    peso_consulta_credito = models.IntegerField("Peso Consulta Crédito (%)", default=25)
+    peso_garantias = models.IntegerField("Peso Garantias (%)", default=15)
+    peso_perfil = models.IntegerField("Peso Perfil do Cliente (%)", default=10)
+
+    # === PARÂMETROS ===
+    # Comprometimento
+    comprometimento_ideal = models.DecimalField("Comprometimento Ideal (%)", max_digits=5, decimal_places=2, default=25)
+    comprometimento_maximo = models.DecimalField("Comprometimento Máximo (%)", max_digits=5, decimal_places=2, default=50)
+
+    # Score de corte
+    score_minimo_aprovacao = models.IntegerField("Score Mínimo p/ Aprovação", default=300)
+    score_atencao = models.IntegerField("Score de Atenção", default=500)
+
+    # Idade
+    idade_minima_ideal = models.IntegerField("Idade Mínima Ideal", default=25)
+    idade_maxima_ideal = models.IntegerField("Idade Máxima Ideal", default=60)
+
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Configuração do Score"
+        verbose_name_plural = "Configuração do Score"
+
+    def __str__(self):
+        return "Configuração do Score de Crédito"
+
+    @classmethod
+    def get_config(cls):
+        config, _ = cls.objects.get_or_create(pk=1)
+        return config

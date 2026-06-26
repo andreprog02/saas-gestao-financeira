@@ -4,7 +4,6 @@ from .models import Cliente
 
 
 def _parse_brl(valor):
-    """Converte valor BRL (1.234,56) para Decimal."""
     if not valor or not valor.strip():
         return None
     limpo = valor.replace("R$", "").replace(" ", "").strip()
@@ -20,32 +19,25 @@ class ClienteForm(forms.ModelForm):
         required=False,
         input_formats=["%d/%m/%Y"],
         widget=forms.TextInput(attrs={
-            "class": "form-control",
-            "id": "id_data_nascimento",
-            "placeholder": "dd/mm/aaaa",
-            "maxlength": "10",
-            "inputmode": "numeric",
-            "autocomplete": "off",
+            "class": "form-control", "id": "id_data_nascimento",
+            "placeholder": "dd/mm/aaaa", "maxlength": "10",
+            "inputmode": "numeric", "autocomplete": "off",
         })
     )
 
     renda_mensal = forms.CharField(
         required=False,
         widget=forms.TextInput(attrs={
-            "class": "form-control brl-mask",
-            "placeholder": "0,00",
-            "id": "id_renda_mensal",
-            "inputmode": "decimal",
+            "class": "form-control brl-mask", "placeholder": "0,00",
+            "id": "id_renda_mensal", "inputmode": "decimal",
         })
     )
 
     outros_rendimentos = forms.CharField(
         required=False,
         widget=forms.TextInput(attrs={
-            "class": "form-control brl-mask",
-            "placeholder": "0,00",
-            "id": "id_outros_rendimentos",
-            "inputmode": "decimal",
+            "class": "form-control brl-mask", "placeholder": "0,00",
+            "id": "id_outros_rendimentos", "inputmode": "decimal",
         })
     )
 
@@ -83,7 +75,12 @@ class ClienteForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Preenche renda_mensal formatado se já tem valor
+        # Todos os campos opcionais
+        for field_name in self.fields:
+            if field_name != "nome_completo" and field_name != "cpf":
+                self.fields[field_name].required = False
+
+        # Formata valores existentes pra exibição
         if self.instance and self.instance.pk:
             if self.instance.renda_mensal:
                 self.initial["renda_mensal"] = f"{self.instance.renda_mensal:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")

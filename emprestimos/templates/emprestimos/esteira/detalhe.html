@@ -299,6 +299,72 @@
   <!-- COLUNA DIREITA: documentos + dossiê + comitê + timeline -->
   <div class="col-lg-5">
 
+    <!-- SCORE DE CRÉDITO (Análise e Comitê) -->
+    {% if score_resultado %}
+    <div class="card shadow-sm mb-3 border-{{ score_resultado.cor }}">
+      <div class="card-header py-2 bg-{{ score_resultado.cor }} {% if score_resultado.cor != 'warning' %}text-white{% endif %}">
+        <strong><i class="bi bi-speedometer2 me-1"></i>Score de Crédito Interno</strong>
+      </div>
+      <div class="card-body">
+        <!-- SCORE PRINCIPAL -->
+        <div class="text-center mb-3">
+          <div class="position-relative d-inline-block">
+            <svg width="200" height="120" viewBox="0 0 200 120">
+              <!-- Fundo do arco -->
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#e9ecef" stroke-width="12" stroke-linecap="round"/>
+              <!-- Arco colorido -->
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none"
+                    stroke="{% if score_resultado.score >= 700 %}#198754{% elif score_resultado.score >= 500 %}#0dcaf0{% elif score_resultado.score >= 300 %}#ffc107{% else %}#dc3545{% endif %}"
+                    stroke-width="12" stroke-linecap="round"
+                    stroke-dasharray="{{ score_resultado.score|divisibleby:1 }}, 1000"
+                    style="stroke-dasharray: {% widthratio score_resultado.score 1000 251 %} 251;"/>
+              <!-- Texto do score -->
+              <text x="100" y="85" text-anchor="middle" font-size="36" font-weight="bold"
+                    fill="{% if score_resultado.score >= 700 %}#198754{% elif score_resultado.score >= 500 %}#0dcaf0{% elif score_resultado.score >= 300 %}#ffc107{% else %}#dc3545{% endif %}">
+                {{ score_resultado.score }}
+              </text>
+              <text x="100" y="105" text-anchor="middle" font-size="12" fill="#6c757d">de 1000</text>
+            </svg>
+          </div>
+          <div>
+            <span class="badge bg-{{ score_resultado.cor }} fs-6 px-3 py-2">{{ score_resultado.faixa }}</span>
+          </div>
+          {% if score_resultado.reprovado_auto %}
+          <div class="alert alert-danger py-1 mt-2 small mb-0">
+            <i class="bi bi-exclamation-octagon me-1"></i>
+            Score abaixo do mínimo ({{ score_resultado.score_minimo }}) — requer justificativa
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- DETALHAMENTO POR FATOR -->
+        <h6 class="small fw-bold text-muted mb-2">Detalhamento</h6>
+        {% for f in score_resultado.fatores %}
+        <div class="mb-2">
+          <div class="d-flex justify-content-between align-items-center small mb-1">
+            <span><i class="bi {{ f.icone }} me-1"></i>{{ f.nome }} <span class="text-muted">({{ f.peso }}%)</span></span>
+            <span class="fw-bold text-{{ f.cor }}">{{ f.nota }}/1000 → {{ f.pontos }}pts</span>
+          </div>
+          <div class="progress" style="height: 8px;">
+            <div class="progress-bar bg-{{ f.cor }}" style="width: {% widthratio f.nota 1000 100 %}%;"></div>
+          </div>
+          <small class="text-muted">{{ f.detalhe }}</small>
+        </div>
+        {% endfor %}
+
+        <!-- LEGENDA -->
+        <div class="mt-3 pt-2 border-top">
+          <div class="d-flex justify-content-between small text-muted">
+            <span><span class="badge bg-danger">&nbsp;</span> 0-299 Alto Risco</span>
+            <span><span class="badge bg-warning">&nbsp;</span> 300-499 Atenção</span>
+            <span><span class="badge bg-info">&nbsp;</span> 500-699 Moderado</span>
+            <span><span class="badge bg-success">&nbsp;</span> 700+ Bom</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- ANÁLISE DE RENDA E COMPROMETIMENTO (Análise de Crédito e Comitê) -->
     {% if analise_renda %}
     <div class="card shadow-sm mb-3 border-primary">

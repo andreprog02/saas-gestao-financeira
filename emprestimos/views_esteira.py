@@ -437,10 +437,28 @@ def detalhe_proposta(request, proposta_id):
     # === ANÁLISE DE RENDA E COMPROMETIMENTO ===
     analise_renda = None
     consulta_credito = None
+    score_resultado = None
     is_analise_ou_comite = etapa_ativa and etapa_ativa.etapa in ("ANALISE_CREDITO", "COMITE")
     if is_analise_ou_comite:
         cli = proposta.cliente
         from clientes.models import DocumentoCliente, ConsultaCredito
+        from .score_credito import calcular_score
+
+        # Score de crédito
+        try:
+            score_resultado = calcular_score(cli, proposta)
+            # Salva na proposta se ainda não foi salvo
+            if proposta.score_calculado != score_resultado["score"]:
+                proposta.score_calculado = score_resultado["score"]
+                proposta.score_detalhamento = {
+                    "fatores": [
+                        {"nome": f["nome"], "nota": f["nota"], "pontos": f["pontos"], "detalhe": f["detalhe"]}
+                        for f in score_resultado["fatores"]
+                    ]
+                }
+                proposta.save(update_fields=["score_calculado", "score_detalhamento"])
+        except Exception as e:
+            score_resultado = None
 
         # Última consulta de crédito
         consulta_credito = ConsultaCredito.objects.filter(
@@ -524,6 +542,7 @@ def detalhe_proposta(request, proposta_id):
         "analise_renda": analise_renda,
         "is_analise_ou_comite": is_analise_ou_comite,
         "consulta_credito": consulta_credito,
+        "score_resultado": score_resultado,
     })
 
 
