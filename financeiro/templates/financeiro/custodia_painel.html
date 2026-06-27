@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-card-checklist me-2"></i>Custódia de Cheques</h4>
+  <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalEntrada">
+    <i class="bi bi-plus-lg me-1"></i>Entrada de Cheque
+  </button>
+</div>
+
+<!-- RESUMO -->
+<div class="row g-3 mb-3">
+  <div class="col"><div class="card border-primary shadow-sm"><div class="card-body text-center py-2">
+    <small class="text-muted d-block">Em Custódia</small>
+    <span class="fw-bold fs-4 text-primary">{{ totais.custodia }}</span>
+    <br><small class="text-muted">R$ {{ totais.valor_custodia|floatformat:2 }}</small>
+  </div></div></div>
+  <div class="col"><div class="card border-warning shadow-sm"><div class="card-body text-center py-2">
+    <small class="text-muted d-block">Em Compensação</small>
+    <span class="fw-bold fs-4 text-warning">{{ totais.compensacao }}</span>
+  </div></div></div>
+  <div class="col"><div class="card border-success shadow-sm"><div class="card-body text-center py-2">
+    <small class="text-muted d-block">Compensados</small>
+    <span class="fw-bold fs-4 text-success">{{ totais.compensados }}</span>
+  </div></div></div>
+  <div class="col"><div class="card border-danger shadow-sm"><div class="card-body text-center py-2">
+    <small class="text-muted d-block">Devolvidos</small>
+    <span class="fw-bold fs-4 text-danger">{{ totais.devolvidos }}</span>
+  </div></div></div>
+  {% if totais.vencendo_hoje > 0 %}
+  <div class="col"><div class="card bg-warning shadow-sm"><div class="card-body text-center py-2">
+    <small class="d-block">⚠️ Vencendo Hoje</small>
+    <span class="fw-bold fs-4">{{ totais.vencendo_hoje }}</span>
+  </div></div></div>
+  {% endif %}
+</div>
+
+<!-- FILTROS -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex gap-2">
+      <a href="{% url 'financeiro:custodia_painel' %}" class="btn btn-sm {% if not filtro %}btn-dark{% else %}btn-outline-dark{% endif %}">Todos</a>
+      <a href="?status=EM_CUSTODIA" class="btn btn-sm {% if filtro == 'EM_CUSTODIA' %}btn-primary{% else %}btn-outline-primary{% endif %}">Em Custódia</a>
+      <a href="?status=ENVIADO_COMPENSACAO" class="btn btn-sm {% if filtro == 'ENVIADO_COMPENSACAO' %}btn-warning{% else %}btn-outline-warning{% endif %}">Compensação</a>
+      <a href="?status=COMPENSADO" class="btn btn-sm {% if filtro == 'COMPENSADO' %}btn-success{% else %}btn-outline-success{% endif %}">Compensados</a>
+      <a href="?status=DEVOLVIDO" class="btn btn-sm {% if filtro == 'DEVOLVIDO' %}btn-danger{% else %}btn-outline-danger{% endif %}">Devolvidos</a>
+    </div>
+  </div>
+</div>
+
+<!-- TABELA -->
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Banco</th><th>Ag/Conta</th><th>Nº Cheque</th><th class="text-end">Valor</th>
+          <th>Vencimento</th><th>Emitente</th><th>Cliente</th><th class="text-center">Status</th><th class="text-end">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ch in cheques %}
+        <tr>
+          <td class="small">{{ ch.banco }}</td>
+          <td class="small">{{ ch.agencia }}/{{ ch.conta }}</td>
+          <td class="small fw-semibold">{{ ch.numero_cheque }}</td>
+          <td class="text-end small fw-bold">R$ {{ ch.valor|floatformat:2 }}</td>
+          <td class="small {% if ch.vencido %}text-danger fw-bold{% endif %}">
+            {{ ch.vencimento|date:"d/m/Y" }}
+            {% if ch.dias_ate_vencimento <= 3 and ch.status == 'EM_CUSTODIA' and ch.dias_ate_vencimento >= 0 %}
+              <span class="badge bg-warning text-dark">{{ ch.dias_ate_vencimento }}d</span>
+            {% elif ch.vencido %}
+              <span class="badge bg-danger">Vencido</span>
+            {% endif %}
+          </td>
+          <td class="small">{{ ch.emitente }}</td>
+          <td class="small text-muted">{{ ch.cliente.nome_completo|default:"-"|truncatechars:20 }}</td>
+          <td class="text-center"><span class="badge bg-{{ ch.status_cor }}">{{ ch.get_status_display }}</span></td>
+          <td class="text-end">
+            {% if ch.status == 'EM_CUSTODIA' %}
+            <form method="post" action="{% url 'financeiro:custodia_acao' ch.id %}" class="d-inline">
+              {% csrf_token %}<input type="hidden" name="acao" value="enviar_compensacao">
+              <button type="submit" class="btn btn-sm btn-outline-warning py-0" title="Enviar p/ compensação"><i class="bi bi-send"></i></button>
+            </form>
+            {% elif ch.status == 'ENVIADO_COMPENSACAO' %}
+            <form method="post" action="{% url 'financeiro:custodia_acao' ch.id %}" class="d-inline">
+              {% csrf_token %}<input type="hidden" name="acao" value="compensar">
+              <button type="submit" class="btn btn-sm btn-outline-success py-0" title="Compensar"><i class="bi bi-check-lg"></i></button>
+            </form>
+            <button type="button" class="btn btn-sm btn-outline-danger py-0" title="Devolver"
+                    onclick="document.getElementById('dev-id').value='{{ ch.id }}'; new bootstrap.Modal(document.getElementById('modalDevolver')).show();">
+              <i class="bi bi-arrow-return-left"></i>
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="text-center text-muted py-3">Nenhum cheque encontrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL ENTRADA -->
+<div class="modal fade" id="modalEntrada" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{% url 'financeiro:custodia_entrada' %}">
+      {% csrf_token %}
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white"><h5 class="modal-title">Entrada de Cheque</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-4"><input type="text" name="banco" class="form-control form-control-sm" placeholder="Banco" required></div>
+            <div class="col-4"><input type="text" name="agencia" class="form-control form-control-sm" placeholder="Agência" required></div>
+            <div class="col-4"><input type="text" name="conta" class="form-control form-control-sm" placeholder="Conta" required></div>
+            <div class="col-4"><input type="text" name="numero_cheque" class="form-control form-control-sm" placeholder="Nº Cheque" required></div>
+            <div class="col-4"><input type="text" name="valor" class="form-control form-control-sm cust-brl" placeholder="Valor" required></div>
+            <div class="col-4"><input type="date" name="vencimento" class="form-control form-control-sm" required></div>
+            <div class="col-6"><input type="text" name="emitente" class="form-control form-control-sm" placeholder="Emitente" required></div>
+            <div class="col-6"><input type="text" name="cpf_emitente" class="form-control form-control-sm" placeholder="CPF Emitente"></div>
+          </div>
+        </div>
+        <div class="modal-footer py-1"><button type="submit" class="btn btn-primary btn-sm">Registrar</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL DEVOLUÇÃO -->
+<div class="modal fade" id="modalDevolver" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <form method="post" id="form-devolver">
+      {% csrf_token %}<input type="hidden" name="acao" value="devolver"><input type="hidden" name="cheque_id" id="dev-id">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white py-2"><h6 class="modal-title">Devolver Cheque</h6><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <input type="text" name="motivo" class="form-control form-control-sm" placeholder="Motivo da devolução" required>
+        </div>
+        <div class="modal-footer py-1"><button type="submit" class="btn btn-danger btn-sm">Devolver</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.getElementById('form-devolver').addEventListener('submit', function(e){
+  var id = document.getElementById('dev-id').value;
+  this.action = '/financeiro/custodia/' + id + '/acao/';
+});
+document.querySelectorAll('.cust-brl').forEach(function(el){
+  el.addEventListener('input', function(){
+    var v = el.value.replace(/\D/g, '');
+    if(!v){ el.value = ''; return; }
+    var n = parseInt(v,10), r = (n/100).toFixed(2), p = r.split('.');
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    el.value = p.join(',');
+  });
+});
+</script>
+{% endblock %}

@@ -416,3 +416,174 @@ def buscar_cliente_ajax(request):
         {"id": c.id, "nome": c.nome_completo, "cpf": c.cpf}
         for c in clientes
     ]})
+
+
+# ==============================================================================
+# TESOURARIA
+# ==============================================================================
+
+@login_required
+def tesouraria_painel(request):
+    """Painel da tesouraria com saldo e movimentações."""
+    from .models import Tesouraria, MovimentacaoTesouraria
+    hoje = timezone.localdate()
+    tesouraria = Tesouraria.objects.filter(data=hoje).first()
+
+    if request.method == "POST" and "abrir" in request.POST:
+        if not tesouraria:
+            saldo = parse_valor_monetario(request.POST.get("saldo_abertura", "0"))
+            tesouraria = Tesouraria.objects.create(
+                data=hoje, saldo_abertura=saldo, saldo_atual=saldo,
+                aberto_por=request.user, aberto_em=timezone.now(),
+            )
+            messages.success(request, f"Tesouraria aberta com R$ {saldo:.2f}")
+        return redirect("financeiro:tesouraria_painel")
+
+    if request.method == "POST" and "fechar" in request.POST:
+        if tesouraria and tesouraria.status == "ABERTA":
+            tesouraria.status = "FECHADA"
+            tesouraria.fechado_por = request.user
+            tesouraria.fechado_em = timezone.now()
+            tesouraria.save()
+            messages.success(request, f"Tesouraria fechada. Saldo: R$ {tesouraria.saldo_atual:.2f}")
+        return redirect("financeiro:tesouraria_painel")
+
+    # Caixas abertos hoje
+    caixas_abertos = Caixa.objects.filter(data=hoje, status="ABERTO")
+    historico = Tesouraria.objects.exclude(data=hoje).order_by("-data")[:15]
+
+    # Último saldo
+    ultima = Tesouraria.objects.filter(status="FECHADA").order_by("-data").first()
+    saldo_sugerido = ultima.saldo_atual if ultima else Decimal("0.00")
+
+    movimentacoes = []
+    if tesouraria:
+        tesouraria.recalcular_saldo()
+        movimentacoes = tesouraria.movimentacoes.select_related("caixa_destino", "usuario").order_by("-data_hora")[:30]
+
+    return render(request, "financeiro/tesouraria_painel.html", {
+        "tesouraria": tesouraria,
+        "caixas_abertos": caixas_abertos,
+        "movimentacoes": movimentacoes,
+        "historico": historico,
+        "saldo_sugerido": saldo_sugerido,
+        "hoje": hoje,
+    })
+
+
+@login_required
+def tesouraria_lancamento(request):
+    """Registra movimentação na tesouraria."""
+    from .models import Tesouraria, MovimentacaoTesouraria
+    hoje = timezone.localdate()
+    tesouraria = Tesouraria.objects.filter(data=hoje, status="ABERTA").first()
+
+    if not tesouraria:
+        messages.error(request, "Tesouraria não está aberta.")
+        return redirect("financeiro:tesouraria_painel")
+
+    if request.method == "POST":
+        tipo = request.POST.get("tipo", "")
+        valor = parse_valor_monetario(request.POST.get("valor", "0"))
+        descricao = request.POST.get("descricao", "")
+        caixa_id = request.POST.get("caixa_id", "")
+
+        if not tipo or valor <= 0:
+            messages.error(request, "Informe tipo e valor.")
+            return redirect("financeiro:tesouraria_painel")
+
+        mov = MovimentacaoTesouraria(
+            tesouraria=tesouraria, tipo=tipo, valor=valor,
+            descricao=descricao, usuario=request.user,
+        )
+        if caixa_id:
+            mov.caixa_destino_id = int(caixa_id)
+        mov.save()
+        tesouraria.recalcular_saldo()
+
+        messages.success(request, f"{mov.get_tipo_display()}: R$ {abs(mov.valor):.2f}")
+
+    return redirect("financeiro:tesouraria_painel")
+
+
+# ==============================================================================
+# CUSTÓDIA DE CHEQUES
+# ==============================================================================
+
+@login_required
+def custodia_painel(request):
+    """Painel de custódia de cheques."""
+    from .models import ChequeCustodia
+    from emprestimos.models import ChequeGarantia
+
+    filtro = request.GET.get("status", "")
+    cheques = ChequeCustodia.objects.select_related("cliente", "emprestimo").all()
+
+    if filtro:
+        cheques = cheques.filter(status=filtro)
+
+    totais = {
+        "custodia": ChequeCustodia.objects.filter(status="EM_CUSTODIA").count(),
+        "compensacao": ChequeCustodia.objects.filter(status="ENVIADO_COMPENSACAO").count(),
+        "compensados": ChequeCustodia.objects.filter(status="COMPENSADO").count(),
+        "devolvidos": ChequeCustodia.objects.filter(status="DEVOLVIDO").count(),
+        "valor_custodia": ChequeCustodia.objects.filter(status="EM_CUSTODIA").aggregate(s=Sum("valor"))["s"] or Decimal("0"),
+        "vencendo_hoje": ChequeCustodia.objects.filter(status="EM_CUSTODIA", vencimento=timezone.localdate()).count(),
+    }
+
+    return render(request, "financeiro/custodia_painel.html", {
+        "cheques": cheques[:100],
+        "totais": totais,
+        "filtro": filtro,
+    })
+
+
+@login_required
+def custodia_entrada(request):
+    """Registra entrada de cheque na custódia (manual ou vindo da formalização)."""
+    from .models import ChequeCustodia
+
+    if request.method == "POST":
+        ChequeCustodia.objects.create(
+            banco=request.POST.get("banco", ""),
+            agencia=request.POST.get("agencia", ""),
+            conta=request.POST.get("conta", ""),
+            numero_cheque=request.POST.get("numero_cheque", ""),
+            valor=parse_valor_monetario(request.POST.get("valor", "0")),
+            vencimento=request.POST.get("vencimento", timezone.localdate()),
+            emitente=request.POST.get("emitente", ""),
+            cpf_emitente=request.POST.get("cpf_emitente", ""),
+            cliente_id=request.POST.get("cliente_id") or None,
+            registrado_por=request.user,
+        )
+        messages.success(request, "Cheque registrado na custódia.")
+
+    return redirect("financeiro:custodia_painel")
+
+
+@login_required
+def custodia_acao(request, cheque_id):
+    """Muda status do cheque: enviar compensação, compensar, devolver."""
+    from .models import ChequeCustodia
+
+    cheque = get_object_or_404(ChequeCustodia, id=cheque_id)
+    acao = request.POST.get("acao", "")
+
+    if acao == "enviar_compensacao":
+        cheque.status = "ENVIADO_COMPENSACAO"
+        cheque.data_envio_compensacao = timezone.localdate()
+        messages.info(request, f"Cheque {cheque.numero_cheque} enviado para compensação.")
+
+    elif acao == "compensar":
+        cheque.status = "COMPENSADO"
+        cheque.data_compensacao = timezone.localdate()
+        messages.success(request, f"Cheque {cheque.numero_cheque} compensado.")
+
+    elif acao == "devolver":
+        cheque.status = "DEVOLVIDO"
+        cheque.data_devolucao = timezone.localdate()
+        cheque.motivo_devolucao = request.POST.get("motivo", "")
+        messages.warning(request, f"Cheque {cheque.numero_cheque} devolvido.")
+
+    cheque.save()
+    return redirect("financeiro:custodia_painel")

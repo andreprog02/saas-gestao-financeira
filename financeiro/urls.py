@@ -19,4 +19,13 @@ urlpatterns = [
 
     # AJAX
     path("buscar-cliente/", views.buscar_cliente_ajax, name="buscar_cliente"),
+
+    # Tesouraria
+    path("tesouraria/", views.tesouraria_painel, name="tesouraria_painel"),
+    path("tesouraria/lancamento/", views.tesouraria_lancamento, name="tesouraria_lancamento"),
+
+    # Custódia de cheques
+    path("custodia/", views.custodia_painel, name="custodia_painel"),
+    path("custodia/entrada/", views.custodia_entrada, name="custodia_entrada"),
+    path("custodia/<int:cheque_id>/acao/", views.custodia_acao, name="custodia_acao"),
 ]
