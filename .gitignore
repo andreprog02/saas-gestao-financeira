@@ -25,3 +25,8 @@ media/
 .DS_Store
 Thumbs.db
 logs/*.log
+
+
+dados_backup.json
+dados_backup_utf8.json
+dados_fix.json
