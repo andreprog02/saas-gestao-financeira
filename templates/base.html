@@ -56,6 +56,12 @@
                 <li><a class="dropdown-item" href="{% url 'financeiro:caixa_painel' %}">
                     <i class="bi bi-safe me-2"></i>Controle de Caixa
                 </a></li>
+                <li><a class="dropdown-item" href="{% url 'financeiro:caixa_abrir' %}">
+                    <i class="bi bi-unlock me-2"></i>Abertura de Caixa
+                </a></li>
+                <li><a class="dropdown-item" href="{% url 'financeiro:caixa_fechar' %}">
+                    <i class="bi bi-lock me-2"></i>Fechamento de Caixa
+                </a></li>
                 <li><a class="dropdown-item" href="{% url 'financeiro:caixa_lancamento' %}">
                     <i class="bi bi-cash-coin me-2"></i>Lançamentos do Caixa
                 </a></li>
@@ -81,6 +87,11 @@
                 <li>
                     <a class="dropdown-item" href="{% url 'emprestimos:esteira_nova' %}">
                         <i class="bi bi-plus-circle"></i> Nova Proposta
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'emprestimos:nova_antecipacao' %}">
+                        <i class="bi bi-arrow-left-right"></i> Nova Antecipação
                     </a>
                 </li>
                 <li><hr class="dropdown-divider"></li>

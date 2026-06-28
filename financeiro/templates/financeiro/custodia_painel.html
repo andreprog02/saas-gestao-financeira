@@ -91,6 +91,14 @@
                     onclick="document.getElementById('dev-id').value='{{ ch.id }}'; new bootstrap.Modal(document.getElementById('modalDevolver')).show();">
               <i class="bi bi-arrow-return-left"></i>
             </button>
+            {% elif ch.status == 'DEVOLVIDO' %}
+            <form method="post" action="{% url 'financeiro:custodia_acao' ch.id %}" class="d-inline">
+              {% csrf_token %}<input type="hidden" name="acao" value="reapresentar">
+              <button type="submit" class="btn btn-sm btn-outline-warning py-0" title="Reapresentar"
+                      onclick="return confirm('Reapresentar este cheque?')">
+                <i class="bi bi-arrow-repeat"></i> 2ª via
+              </button>
+            </form>
             {% endif %}
           </td>
         </tr>
@@ -129,13 +137,35 @@
 
 <!-- MODAL DEVOLUÇÃO -->
 <div class="modal fade" id="modalDevolver" tabindex="-1">
-  <div class="modal-dialog modal-sm">
+  <div class="modal-dialog">
     <form method="post" id="form-devolver">
       {% csrf_token %}<input type="hidden" name="acao" value="devolver"><input type="hidden" name="cheque_id" id="dev-id">
       <div class="modal-content">
-        <div class="modal-header bg-danger text-white py-2"><h6 class="modal-title">Devolver Cheque</h6><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+        <div class="modal-header bg-danger text-white py-2"><h5 class="modal-title">Devolver Cheque</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <input type="text" name="motivo" class="form-control form-control-sm" placeholder="Motivo da devolução" required>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Alínea de Devolução</label>
+            <select name="alinea" class="form-select form-select-sm" required>
+              <option value="">Selecione a alínea...</option>
+              <option value="11">11 - Sem fundos (1ª apresentação)</option>
+              <option value="12">12 - Sem fundos (2ª apresentação)</option>
+              <option value="13">13 - Conta encerrada</option>
+              <option value="20">20 - Folha de cheque cancelada</option>
+              <option value="21">21 - Contra-ordem / Sustação</option>
+              <option value="22">22 - Divergência de assinatura</option>
+              <option value="25">25 - Sem motivo de devolução</option>
+              <option value="28">28 - Sustação judicial</option>
+              <option value="31">31 - Erro formal</option>
+              <option value="33">33 - Divergência de endosso</option>
+              <option value="35">35 - Cheque fraudado</option>
+              <option value="44">44 - Cheque prescrito (+6 meses)</option>
+              <option value="48">48 - Valor superior ao estabelecido</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Observação adicional</label>
+            <input type="text" name="motivo" class="form-control form-control-sm" placeholder="Detalhes...">
+          </div>
         </div>
         <div class="modal-footer py-1"><button type="submit" class="btn btn-danger btn-sm">Devolver</button></div>
       </div>

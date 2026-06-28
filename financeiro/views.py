@@ -117,24 +117,58 @@ def caixa_painel(request):
 
 @login_required
 def caixa_abrir(request):
+    """Abre um novo caixa — usuário escolhe identificador, conta cédulas da tesouraria."""
+    from .models import Tesouraria, MovimentacaoTesouraria
     hoje = timezone.localdate()
-    if Caixa.objects.filter(data=hoje).exists():
-        messages.warning(request, "O caixa de hoje já foi aberto.")
-        return redirect("financeiro:caixa_painel")
+
+    tesouraria = Tesouraria.objects.filter(pk=1).first()
+    if not tesouraria:
+        messages.error(request, "Tesouraria não inicializada. Acesse a tesouraria primeiro.")
+        return redirect("financeiro:tesouraria_painel")
 
     if request.method == "POST":
-        saldo = parse_valor_monetario(request.POST.get("saldo_abertura", "0"))
-        Caixa.objects.create(
-            data=hoje, saldo_abertura=saldo,
+        identificador = request.POST.get("identificador", "").strip() or "Caixa 1"
+
+        cedulas = {}
+        total_ced = Decimal("0.00")
+        for val in ["200", "100", "50", "20", "10", "5", "2"]:
+            qtd = int(request.POST.get(f"ced_{val}", 0) or 0)
+            cedulas[val] = qtd
+            total_ced += Decimal(val) * qtd
+
+        moedas = {}
+        total_moe = Decimal("0.00")
+        for val, key in [("1.00", "100"), ("0.50", "050"), ("0.25", "025"), ("0.10", "010"), ("0.05", "005")]:
+            qtd = int(request.POST.get(f"moe_{key}", 0) or 0)
+            moedas[key] = qtd
+            total_moe += Decimal(val) * qtd
+
+        saldo = total_ced + total_moe
+        if saldo <= 0:
+            messages.error(request, "Informe a contagem de cédulas/moedas.")
+            return redirect("financeiro:caixa_abrir")
+
+        caixa = Caixa.objects.create(
+            data=hoje, identificador=identificador, saldo_abertura=saldo,
             aberto_por=request.user, aberto_em=timezone.now(),
         )
-        messages.success(request, f"Caixa aberto com saldo de R$ {saldo:.2f}")
+
+        MovimentacaoTesouraria.objects.create(
+            tesouraria=tesouraria, tipo="ENVIO_CAIXA", valor=saldo,
+            descricao=f"Envio p/ {identificador} — {request.user.get_full_name() or request.user.username}",
+            caixa_destino=caixa, usuario=request.user,
+        )
+        tesouraria.recalcular_saldo()
+
+        messages.success(request, f"{identificador} aberto com R$ {saldo:.2f} da tesouraria.")
         return redirect("financeiro:caixa_painel")
 
-    ultimo = Caixa.objects.filter(status="FECHADO").order_by("-data").first()
-    saldo_sugerido = ultimo.saldo_conferido if ultimo else Decimal("0.00")
+    caixas_abertos = Caixa.objects.filter(status="ABERTO")
+    proximo_num = caixas_abertos.count() + 1
+
     return render(request, "financeiro/caixa_abrir.html", {
-        "hoje": hoje, "saldo_sugerido": saldo_sugerido,
+        "hoje": hoje, "tesouraria": tesouraria,
+        "sugestao": f"Caixa {proximo_num}",
     })
 
 
@@ -285,13 +319,24 @@ def caixa_estornar(request, mov_id):
 # ==============================================================================
 
 @login_required
-def caixa_fechar(request):
-    hoje = timezone.localdate()
-    caixa = Caixa.objects.filter(data=hoje, status="ABERTO").first()
-    if not caixa:
-        messages.error(request, "Nenhum caixa aberto hoje.")
-        return redirect("financeiro:caixa_painel")
+def caixa_fechar(request, caixa_id=None):
+    """Fechamento do caixa — seleciona qual fechar, envia numerário para tesouraria."""
+    from .models import Tesouraria, MovimentacaoTesouraria
 
+    # Se não veio caixa_id, mostra lista dos abertos pra escolher
+    if not caixa_id:
+        caixas_abertos = Caixa.objects.filter(status="ABERTO").order_by("-data", "identificador")
+        if caixas_abertos.count() == 0:
+            messages.error(request, "Nenhum caixa aberto.")
+            return redirect("financeiro:caixa_painel")
+        if caixas_abertos.count() == 1:
+            return redirect("financeiro:caixa_fechar_id", caixa_id=caixas_abertos.first().id)
+        return render(request, "financeiro/caixa_selecionar_fechar.html", {
+            "caixas": caixas_abertos,
+        })
+
+    caixa = get_object_or_404(Caixa, id=caixa_id, status="ABERTO")
+    tesouraria = Tesouraria.objects.filter(pk=1).first()
     saldo_fisico = caixa.saldo_fisico_calculado
 
     if request.method == "POST":
@@ -323,17 +368,26 @@ def caixa_fechar(request):
         caixa.status = "FECHADO"
         caixa.save()
 
+        if tesouraria and saldo_conferido > 0:
+            MovimentacaoTesouraria.objects.create(
+                tesouraria=tesouraria, tipo="RECEB_CAIXA", valor=saldo_conferido,
+                descricao=f"Recebimento {caixa.identificador} — {request.user.get_full_name() or request.user.username}",
+                caixa_destino=caixa, usuario=request.user,
+            )
+            tesouraria.recalcular_saldo()
+
         if abs(diferenca) < Decimal("0.01"):
-            messages.success(request, "Caixa fechado — sem diferença.")
+            messages.success(request, f"{caixa.identificador} fechado — sem diferença. R$ {saldo_conferido:.2f} devolvido à tesouraria.")
         elif diferenca > 0:
-            messages.warning(request, f"Caixa fechado — SOBRA de R$ {diferenca:.2f}")
+            messages.warning(request, f"{caixa.identificador} fechado — SOBRA R$ {diferenca:.2f}.")
         else:
-            messages.error(request, f"Caixa fechado — FALTA de R$ {abs(diferenca):.2f}")
+            messages.error(request, f"{caixa.identificador} fechado — FALTA R$ {abs(diferenca):.2f}.")
 
         return redirect("financeiro:caixa_painel")
 
     return render(request, "financeiro/caixa_fechar.html", {
-        "caixa": caixa, "saldo_sistema": saldo_fisico, "hoje": hoje,
+        "caixa": caixa, "saldo_sistema": saldo_fisico,
+        "hoje": caixa.data,
     })
 
 
@@ -424,50 +478,36 @@ def buscar_cliente_ajax(request):
 
 @login_required
 def tesouraria_painel(request):
-    """Painel da tesouraria com saldo e movimentações."""
+    """Painel da tesouraria — cofre permanente com saldo contínuo."""
     from .models import Tesouraria, MovimentacaoTesouraria
     hoje = timezone.localdate()
-    tesouraria = Tesouraria.objects.filter(data=hoje).first()
 
-    if request.method == "POST" and "abrir" in request.POST:
-        if not tesouraria:
-            saldo = parse_valor_monetario(request.POST.get("saldo_abertura", "0"))
-            tesouraria = Tesouraria.objects.create(
-                data=hoje, saldo_abertura=saldo, saldo_atual=saldo,
-                aberto_por=request.user, aberto_em=timezone.now(),
-            )
-            messages.success(request, f"Tesouraria aberta com R$ {saldo:.2f}")
-        return redirect("financeiro:tesouraria_painel")
+    # Tesouraria é singleton — cria se não existir
+    tesouraria, criada = Tesouraria.objects.get_or_create(
+        pk=1, defaults={
+            "data": hoje, "saldo_abertura": Decimal("0.00"),
+            "saldo_atual": Decimal("0.00"), "status": "ABERTA",
+            "aberto_por": request.user, "aberto_em": timezone.now(),
+        }
+    )
+    tesouraria.recalcular_saldo()
 
-    if request.method == "POST" and "fechar" in request.POST:
-        if tesouraria and tesouraria.status == "ABERTA":
-            tesouraria.status = "FECHADA"
-            tesouraria.fechado_por = request.user
-            tesouraria.fechado_em = timezone.now()
-            tesouraria.save()
-            messages.success(request, f"Tesouraria fechada. Saldo: R$ {tesouraria.saldo_atual:.2f}")
-        return redirect("financeiro:tesouraria_painel")
-
-    # Caixas abertos hoje
     caixas_abertos = Caixa.objects.filter(data=hoje, status="ABERTO")
-    historico = Tesouraria.objects.exclude(data=hoje).order_by("-data")[:15]
 
-    # Último saldo
-    ultima = Tesouraria.objects.filter(status="FECHADA").order_by("-data").first()
-    saldo_sugerido = ultima.saldo_atual if ultima else Decimal("0.00")
-
-    movimentacoes = []
-    if tesouraria:
-        tesouraria.recalcular_saldo()
-        movimentacoes = tesouraria.movimentacoes.select_related("caixa_destino", "usuario").order_by("-data_hora")[:30]
+    # Filtro por data
+    data_filtro = request.GET.get("data", "")
+    movimentacoes = tesouraria.movimentacoes.select_related("caixa_destino", "usuario").order_by("-data_hora")
+    if data_filtro:
+        movimentacoes = movimentacoes.filter(data_hora__date=data_filtro)
+    else:
+        movimentacoes = movimentacoes[:30]
 
     return render(request, "financeiro/tesouraria_painel.html", {
         "tesouraria": tesouraria,
         "caixas_abertos": caixas_abertos,
         "movimentacoes": movimentacoes,
-        "historico": historico,
-        "saldo_sugerido": saldo_sugerido,
         "hoje": hoje,
+        "data_filtro": data_filtro,
     })
 
 
@@ -475,11 +515,10 @@ def tesouraria_painel(request):
 def tesouraria_lancamento(request):
     """Registra movimentação na tesouraria."""
     from .models import Tesouraria, MovimentacaoTesouraria
-    hoje = timezone.localdate()
-    tesouraria = Tesouraria.objects.filter(data=hoje, status="ABERTA").first()
 
+    tesouraria = Tesouraria.objects.filter(pk=1).first()
     if not tesouraria:
-        messages.error(request, "Tesouraria não está aberta.")
+        messages.error(request, "Tesouraria não inicializada.")
         return redirect("financeiro:tesouraria_painel")
 
     if request.method == "POST":
@@ -563,8 +602,9 @@ def custodia_entrada(request):
 
 @login_required
 def custodia_acao(request, cheque_id):
-    """Muda status do cheque: enviar compensação, compensar, devolver."""
+    """Muda status do cheque com integração à conta corrente do cliente."""
     from .models import ChequeCustodia
+    from contas.models import ContaCorrente, MovimentacaoConta
 
     cheque = get_object_or_404(ChequeCustodia, id=cheque_id)
     acao = request.POST.get("acao", "")
@@ -572,18 +612,114 @@ def custodia_acao(request, cheque_id):
     if acao == "enviar_compensacao":
         cheque.status = "ENVIADO_COMPENSACAO"
         cheque.data_envio_compensacao = timezone.localdate()
-        messages.info(request, f"Cheque {cheque.numero_cheque} enviado para compensação.")
+        cheque.save()
+
+        # Credita na C/C como saldo BLOQUEADO
+        if cheque.cliente:
+            try:
+                cc = ContaCorrente.objects.get(cliente=cheque.cliente)
+                MovimentacaoConta.objects.create(
+                    conta=cc, tipo="CREDITO_BLOQUEADO",
+                    origem="CHEQUE_COMPENSACAO",
+                    valor=cheque.valor,
+                    descricao=f"Cheque {cheque.numero_cheque} ({cheque.banco}) em compensação — BLOQUEADO",
+                    cheque_custodia=cheque,
+                    emprestimo=cheque.emprestimo,
+                )
+            except ContaCorrente.DoesNotExist:
+                pass
+
+        messages.info(request, f"Cheque {cheque.numero_cheque} enviado para compensação. Saldo bloqueado na C/C.")
 
     elif acao == "compensar":
         cheque.status = "COMPENSADO"
         cheque.data_compensacao = timezone.localdate()
-        messages.success(request, f"Cheque {cheque.numero_cheque} compensado.")
+        cheque.save()
+
+        # Desbloqueia e credita na C/C
+        if cheque.cliente:
+            try:
+                cc = ContaCorrente.objects.get(cliente=cheque.cliente)
+                MovimentacaoConta.objects.create(
+                    conta=cc, tipo="DESBLOQUEIO",
+                    origem="CHEQUE_COMPENSADO",
+                    valor=cheque.valor,
+                    descricao=f"Cheque {cheque.numero_cheque} ({cheque.banco}) COMPENSADO — saldo liberado",
+                    cheque_custodia=cheque,
+                    emprestimo=cheque.emprestimo,
+                )
+            except ContaCorrente.DoesNotExist:
+                pass
+
+        messages.success(request, f"Cheque {cheque.numero_cheque} compensado. Saldo creditado na C/C.")
 
     elif acao == "devolver":
+        alinea = request.POST.get("alinea", "")
+        motivo = request.POST.get("motivo", "")
+        motivo_completo = f"Alínea {alinea}: {dict(MovimentacaoConta.ALINEA_CHOICES).get(alinea, '')}. {motivo}".strip() if alinea else motivo
+
         cheque.status = "DEVOLVIDO"
         cheque.data_devolucao = timezone.localdate()
-        cheque.motivo_devolucao = request.POST.get("motivo", "")
-        messages.warning(request, f"Cheque {cheque.numero_cheque} devolvido.")
+        cheque.motivo_devolucao = motivo_completo
+        cheque.save()
 
-    cheque.save()
+        # Estorna o saldo bloqueado
+        if cheque.cliente:
+            try:
+                cc = ContaCorrente.objects.get(cliente=cheque.cliente)
+                # Busca a movimentação bloqueada original
+                mov_bloq = MovimentacaoConta.objects.filter(
+                    cheque_custodia=cheque, tipo="CREDITO_BLOQUEADO", estornado=False
+                ).first()
+                if mov_bloq:
+                    mov_bloq.estornado = True
+                    mov_bloq.save()
+
+                # Remove do saldo bloqueado
+                cc.saldo_bloqueado = max(Decimal("0"), cc.saldo_bloqueado - cheque.valor)
+                cc.save()
+
+                # Registra o estorno
+                MovimentacaoConta.objects.create(
+                    conta=cc, tipo="DEBITO",
+                    origem="CHEQUE_DEVOLVIDO",
+                    valor=Decimal("0"),  # não debita saldo real, só registra
+                    descricao=f"Cheque {cheque.numero_cheque} DEVOLVIDO — {motivo_completo}",
+                    cheque_custodia=cheque,
+                    alinea=alinea,
+                    emprestimo=cheque.emprestimo,
+                )
+            except ContaCorrente.DoesNotExist:
+                pass
+
+        messages.warning(request, f"Cheque {cheque.numero_cheque} devolvido. Alínea: {alinea}. Saldo bloqueado estornado.")
+
+    elif acao == "reapresentar":
+        if cheque.status != "DEVOLVIDO":
+            messages.error(request, "Só é possível reapresentar cheques devolvidos.")
+            return redirect("financeiro:custodia_painel")
+
+        cheque.status = "ENVIADO_COMPENSACAO"
+        cheque.data_envio_compensacao = timezone.localdate()
+        cheque.data_devolucao = None
+        cheque.motivo_devolucao = ""
+        cheque.save()
+
+        # Bloqueia novamente na C/C
+        if cheque.cliente:
+            try:
+                cc = ContaCorrente.objects.get(cliente=cheque.cliente)
+                MovimentacaoConta.objects.create(
+                    conta=cc, tipo="CREDITO_BLOQUEADO",
+                    origem="CHEQUE_COMPENSACAO",
+                    valor=cheque.valor,
+                    descricao=f"Cheque {cheque.numero_cheque} REAPRESENTADO — 2ª via — BLOQUEADO",
+                    cheque_custodia=cheque,
+                    emprestimo=cheque.emprestimo,
+                )
+            except ContaCorrente.DoesNotExist:
+                pass
+
+        messages.info(request, f"Cheque {cheque.numero_cheque} reapresentado. Saldo bloqueado novamente.")
+
     return redirect("financeiro:custodia_painel")

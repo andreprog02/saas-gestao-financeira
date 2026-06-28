@@ -797,6 +797,21 @@ def _liberar_proposta(request, proposta):
     proposta.data_analise = timezone.now()
     proposta.save()
 
+    # === RENEGOCIAÇÃO: Liquidar contrato antigo ===
+    if proposta.finalidade == "RENEGOCIACAO" and proposta.contrato_renegociado:
+        contrato_antigo = proposta.contrato_renegociado
+        parcelas_antigas = contrato_antigo.parcelas.filter(status=ParcelaStatus.ABERTA)
+
+        for p in parcelas_antigas:
+            p.status = ParcelaStatus.LIQUIDADA_RENEGOCIACAO if hasattr(ParcelaStatus, 'LIQUIDADA_RENEGOCIACAO') else ParcelaStatus.PAGA
+            p.data_pagamento = timezone.now()
+            p.save()
+
+        contrato_antigo.status = EmprestimoStatus.RENEGOCIADO
+        contrato_antigo.save(update_fields=["status", "atualizado_em"])
+
+        messages.info(request, f"Contrato antigo {contrato_antigo.codigo_contrato} liquidado pela renegociação.")
+
     messages.success(
         request,
         f"Proposta #{proposta.id} aprovada! Contrato {codigo_novo} gerado "
@@ -1672,3 +1687,50 @@ def gerar_dossie_pdf(request, proposta_id):
 
     doc.build(els)
     return response
+
+
+# ==============================================================================
+# ANTECIPAÇÃO DE RECEBÍVEIS VIA ESTEIRA
+# ==============================================================================
+
+@login_required
+def nova_antecipacao(request):
+    """Cria proposta de antecipação de recebíveis que passa pela esteira."""
+    if request.method == "POST":
+        from .views import to_decimal
+
+        cliente_id = request.POST.get("cliente")
+        valor = to_decimal(request.POST.get("valor", "0"))
+        taxa = Decimal(request.POST.get("taxa", "0").replace(",", "."))
+        qtd = int(request.POST.get("qtd_parcelas", 1))
+        vencimento = request.POST.get("vencimento", "")
+        tipo_recebiveis = request.POST.get("tipo_recebiveis", "")
+        obs = request.POST.get("observacoes", "")
+
+        if not cliente_id or valor <= 0 or not vencimento:
+            messages.error(request, "Preencha todos os campos.")
+            return redirect("emprestimos:nova_antecipacao")
+
+        with transaction.atomic():
+            proposta = PropostaEmprestimo.objects.create(
+                cliente_id=int(cliente_id),
+                valor_solicitado=valor,
+                qtd_parcelas=qtd,
+                taxa_juros=taxa,
+                primeiro_vencimento=vencimento,
+                finalidade="ANTECIPACAO_RECEBIVEIS",
+                usuario_solicitante=request.user,
+                observacoes=f"Antecipação de Recebíveis ({tipo_recebiveis}). {obs}",
+                status="CAPTACAO",
+            )
+
+            etapa = EtapaProposta.objects.create(proposta=proposta, etapa="CAPTACAO")
+            _criar_checklist_para_etapa(etapa)
+
+            messages.success(request, f"Proposta de antecipação criada (#{proposta.id}).")
+            return redirect("emprestimos:esteira_detalhe", proposta_id=proposta.id)
+
+    clientes = Cliente.objects.all().order_by("nome_completo")
+    return render(request, "emprestimos/esteira/nova_antecipacao.html", {
+        "clientes": clientes,
+    })

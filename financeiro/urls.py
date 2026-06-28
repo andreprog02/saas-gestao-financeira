@@ -11,6 +11,7 @@ urlpatterns = [
     path("caixa/", views.caixa_painel, name="caixa_painel"),
     path("caixa/abrir/", views.caixa_abrir, name="caixa_abrir"),
     path("caixa/fechar/", views.caixa_fechar, name="caixa_fechar"),
+    path("caixa/fechar/<int:caixa_id>/", views.caixa_fechar, name="caixa_fechar_id"),
     path("caixa/reabrir/", views.caixa_reabrir, name="caixa_reabrir"),
     path("caixa/lancamento/", views.caixa_lancamento, name="caixa_lancamento"),
     path("caixa/estornar/<int:mov_id>/", views.caixa_estornar, name="caixa_estornar"),

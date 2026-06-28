@@ -2,41 +2,116 @@
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-5">
+  <div class="col-lg-8">
     <div class="card shadow-sm">
       <div class="card-header bg-success text-white">
         <h5 class="mb-0"><i class="bi bi-unlock me-2"></i>Abrir Caixa — {{ hoje|date:"d/m/Y" }}</h5>
       </div>
       <div class="card-body">
+
+        <div class="alert alert-info py-2 d-flex justify-content-between align-items-center mb-3">
+          <span><i class="bi bi-safe2 me-1"></i><strong>Saldo Tesouraria:</strong></span>
+          <span class="fs-4 fw-bold">R$ {{ tesouraria.saldo_atual|floatformat:2 }}</span>
+        </div>
+
         <form method="post">
           {% csrf_token %}
+
           <div class="mb-3">
-            <label class="form-label fw-semibold">Saldo Inicial (R$)</label>
-            <input type="text" name="saldo_abertura" class="form-control fs-4 text-center" id="saldo-brl"
-                   value="{{ saldo_sugerido|floatformat:2 }}" required>
-            <small class="text-muted">Valor sugerido com base no último fechamento.</small>
+            <label class="form-label fw-semibold">Identificador do Caixa</label>
+            <input type="text" name="identificador" class="form-control fs-5" value="{{ sugestao }}" required placeholder="Ex: Caixa 1, Caixa Matriz">
           </div>
-          <div class="d-flex justify-content-between">
+
+          <p class="text-muted small mb-3">
+          Conte as cédulas e moedas recebidas da tesouraria para compor o saldo de abertura do caixa.
+        </p>
+
+        <form method="post">
+          {% csrf_token %}
+          <div class="row g-4">
+            <!-- CÉDULAS -->
+            <div class="col-md-6">
+              <h6 class="fw-bold text-muted mb-2"><i class="bi bi-cash me-1"></i>Cédulas</h6>
+              <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                  <tr><th>Nota</th><th style="width:80px;" class="text-center">Qtd</th><th class="text-end">Subtotal</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td class="fw-semibold">R$ 200,00</td><td><input type="number" name="ced_200" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="200"></td><td class="text-end fw-bold" id="sub-200">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 100,00</td><td><input type="number" name="ced_100" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="100"></td><td class="text-end fw-bold" id="sub-100">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 50,00</td><td><input type="number" name="ced_50" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="50"></td><td class="text-end fw-bold" id="sub-50">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 20,00</td><td><input type="number" name="ced_20" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="20"></td><td class="text-end fw-bold" id="sub-20">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 10,00</td><td><input type="number" name="ced_10" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="10"></td><td class="text-end fw-bold" id="sub-10">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 5,00</td><td><input type="number" name="ced_5" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="5"></td><td class="text-end fw-bold" id="sub-5">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 2,00</td><td><input type="number" name="ced_2" class="form-control form-control-sm text-center ced-input" value="0" min="0" data-valor="2"></td><td class="text-end fw-bold" id="sub-2">0,00</td></tr>
+                </tbody>
+                <tfoot class="table-dark"><tr><td colspan="2" class="fw-bold">Total Cédulas</td><td class="text-end fw-bold fs-5" id="total-cedulas">R$ 0,00</td></tr></tfoot>
+              </table>
+            </div>
+
+            <!-- MOEDAS -->
+            <div class="col-md-6">
+              <h6 class="fw-bold text-muted mb-2"><i class="bi bi-coin me-1"></i>Moedas</h6>
+              <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                  <tr><th>Moeda</th><th style="width:80px;" class="text-center">Qtd</th><th class="text-end">Subtotal</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td class="fw-semibold">R$ 1,00</td><td><input type="number" name="moe_100" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="1.00"></td><td class="text-end fw-bold" id="sub-m100">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 0,50</td><td><input type="number" name="moe_050" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="0.50"></td><td class="text-end fw-bold" id="sub-m050">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 0,25</td><td><input type="number" name="moe_025" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="0.25"></td><td class="text-end fw-bold" id="sub-m025">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 0,10</td><td><input type="number" name="moe_010" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="0.10"></td><td class="text-end fw-bold" id="sub-m010">0,00</td></tr>
+                  <tr><td class="fw-semibold">R$ 0,05</td><td><input type="number" name="moe_005" class="form-control form-control-sm text-center moe-input" value="0" min="0" data-valor="0.05"></td><td class="text-end fw-bold" id="sub-m005">0,00</td></tr>
+                </tbody>
+                <tfoot class="table-dark"><tr><td colspan="2" class="fw-bold">Total Moedas</td><td class="text-end fw-bold fs-5" id="total-moedas">R$ 0,00</td></tr></tfoot>
+              </table>
+
+              <div class="card mt-3 border-success">
+                <div class="card-body py-3 text-center">
+                  <small class="text-muted d-block">Total Recebido da Tesouraria</small>
+                  <span class="fs-2 fw-bold text-success" id="total-geral">R$ 0,00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between mt-4">
             <a href="{% url 'financeiro:caixa_painel' %}" class="btn btn-outline-secondary">Voltar</a>
-            <button type="submit" class="btn btn-success"><i class="bi bi-unlock me-1"></i>Abrir Caixa</button>
+            <button type="submit" class="btn btn-success btn-lg" onclick="return confirm('Confirmar abertura do caixa com o valor contado?')">
+              <i class="bi bi-unlock me-1"></i>Abrir Caixa
+            </button>
           </div>
         </form>
       </div>
     </div>
   </div>
 </div>
+
 <script>
 (function(){
-  var el = document.getElementById('saldo-brl');
-  if(!el) return;
-  el.addEventListener('input', function(){
-    var v = el.value.replace(/\D/g, '');
-    if(!v){ el.value = ''; return; }
-    var n = parseInt(v,10), r = (n/100).toFixed(2), p = r.split('.');
-    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    el.value = p.join(',');
-  });
-  el.addEventListener('keypress', function(e){ if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault(); });
+  function fmt(v){ return v.toLocaleString('pt-BR', {style:'currency', currency:'BRL'}); }
+  function recalcular(){
+    var totalCed = 0, totalMoe = 0;
+    document.querySelectorAll('.ced-input').forEach(function(el){
+      var qtd = parseInt(el.value) || 0;
+      var val = parseFloat(el.dataset.valor);
+      var sub = qtd * val;
+      totalCed += sub;
+      document.getElementById('sub-'+el.name.replace('ced_','')).textContent = fmt(sub);
+    });
+    document.querySelectorAll('.moe-input').forEach(function(el){
+      var qtd = parseInt(el.value) || 0;
+      var val = parseFloat(el.dataset.valor);
+      var sub = qtd * val;
+      totalMoe += sub;
+      document.getElementById('sub-m'+el.name.replace('moe_','')).textContent = fmt(sub);
+    });
+    document.getElementById('total-cedulas').textContent = fmt(totalCed);
+    document.getElementById('total-moedas').textContent = fmt(totalMoe);
+    document.getElementById('total-geral').textContent = fmt(totalCed + totalMoe);
+  }
+  document.querySelectorAll('.ced-input, .moe-input').forEach(function(el){ el.addEventListener('input', recalcular); });
+  recalcular();
 })();
 </script>
 {% endblock %}

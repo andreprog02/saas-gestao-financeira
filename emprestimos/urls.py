@@ -38,6 +38,7 @@ urlpatterns = [
     path("esteira/nova/", views_esteira.nova_proposta, name="esteira_nova"),
     path("esteira/<int:proposta_id>/", views_esteira.detalhe_proposta, name="esteira_detalhe"),
     path("esteira/<int:proposta_id>/editar/", views_esteira.editar_proposta, name="esteira_editar"),
+    path("esteira/antecipacao/", views_esteira.nova_antecipacao, name="nova_antecipacao"),
     path("esteira/<int:proposta_id>/avancar/", views_esteira.avancar_etapa, name="esteira_avancar"),
     path("esteira/<int:proposta_id>/devolver/", views_esteira.devolver_etapa, name="esteira_devolver"),
     path("esteira/<int:proposta_id>/negar/", views_esteira.negar_proposta, name="esteira_negar"),

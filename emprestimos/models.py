@@ -136,6 +136,56 @@ class Emprestimo(models.Model):
             status=ParcelaStatus.ABERTA, vencimento__lt=hoje
         ).count()
 
+    @property
+    def posicao_divida(self):
+        """Retorna posição de dívida atualizada com juros e multa."""
+        from decimal import Decimal
+        hoje = timezone.localdate()
+        parcelas_abertas = self.parcelas.filter(status=ParcelaStatus.ABERTA)
+        parcelas_pagas_count = self.parcelas.filter(status=ParcelaStatus.PAGA).count()
+        total_parcelas = self.parcelas.count()
+        total_original = Decimal("0.00")
+        total_multa = Decimal("0.00")
+        total_juros = Decimal("0.00")
+        total_atualizado = Decimal("0.00")
+        parcelas_vencidas_lista = []
+        parcelas_a_vencer_lista = []
+        qtd_vencidas = 0
+        qtd_a_vencer = 0
+        for p in parcelas_abertas:
+            total_original += p.valor
+            if p.vencimento < hoje:
+                qtd_vencidas += 1
+                dias = (hoje - p.vencimento).days
+                dados = p.dados_atualizados
+                multa = dados.get("multa", Decimal("0.00"))
+                juros = dados.get("juros", Decimal("0.00"))
+                total_p = dados.get("total", p.valor)
+                total_multa += multa
+                total_juros += juros
+                total_atualizado += total_p
+                parcelas_vencidas_lista.append({
+                    "numero": p.numero, "vencimento": p.vencimento,
+                    "dias_atraso": dias, "valor_original": p.valor,
+                    "multa": multa, "juros": juros, "total": total_p,
+                })
+            else:
+                qtd_a_vencer += 1
+                total_atualizado += p.valor
+                parcelas_a_vencer_lista.append({
+                    "numero": p.numero, "vencimento": p.vencimento, "valor": p.valor,
+                })
+        return {
+            "data_calculo": hoje, "total_original": total_original,
+            "total_multa": total_multa, "total_juros": total_juros,
+            "total_encargos": total_multa + total_juros,
+            "total_atualizado": total_atualizado,
+            "parcelas_pagas": parcelas_pagas_count, "total_parcelas": total_parcelas,
+            "qtd_vencidas": qtd_vencidas, "qtd_a_vencer": qtd_a_vencer,
+            "parcelas_vencidas": parcelas_vencidas_lista,
+            "parcelas_a_vencer": parcelas_a_vencer_lista,
+        }
+
 
 class Parcela(models.Model):
     emprestimo = models.ForeignKey(Emprestimo, on_delete=models.CASCADE, related_name="parcelas")
@@ -273,11 +323,28 @@ class PropostaEmprestimo(models.Model):
         ("FINANCIAMENTO", "Financiamento"),
         ("REFINANCIAMENTO", "Refinanciamento"),
         ("RENEGOCIACAO", "Renegociação"),
+        ("ANTECIPACAO_RECEBIVEIS", "Antecipação de Recebíveis"),
         ("OUTRO", "Outro"),
     ]
     finalidade = models.CharField(
-        "Finalidade", max_length=20,
+        "Finalidade", max_length=25,
         choices=FINALIDADE_CHOICES, default="CREDITO_PESSOAL",
+    )
+
+    # Renegociação — vínculo com contrato original
+    contrato_renegociado = models.ForeignKey(
+        Emprestimo, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="propostas_renegociacao",
+        help_text="Contrato original sendo renegociado",
+    )
+    valor_divida_original = models.DecimalField(
+        "Valor Dívida Original", max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        help_text="Saldo devedor + multa + juros do contrato original",
+    )
+    valor_entrada_renegociacao = models.DecimalField(
+        "Entrada na Renegociação", max_digits=12, decimal_places=2,
+        null=True, blank=True,
     )
 
     # IOF

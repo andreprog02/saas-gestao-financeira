@@ -100,6 +100,18 @@
           </div>
           {% endif %}
         </div>
+
+        {% if proposta.contrato_renegociado %}
+        <div class="alert alert-warning py-2 small mt-2 mb-2">
+          <i class="bi bi-arrow-repeat me-1"></i>
+          <strong>Renegociação do contrato:</strong>
+          <a href="{% url 'emprestimos:contrato_detalhe' proposta.contrato_renegociado.id %}">
+            {{ proposta.contrato_renegociado.codigo_contrato }}
+          </a>
+          <br>Dívida original: <strong>R$ {{ proposta.valor_divida_original|floatformat:2|default:"—" }}</strong>
+          {% if proposta.valor_entrada_renegociacao %} · Entrada: <strong>R$ {{ proposta.valor_entrada_renegociacao|floatformat:2 }}</strong>{% endif %}
+        </div>
+        {% endif %}
         {% if proposta.tem_iof or proposta.valor_debitos_extras > 0 %}
         <div class="row small mt-2">
           {% if proposta.tem_iof %}

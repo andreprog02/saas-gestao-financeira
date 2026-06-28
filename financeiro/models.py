@@ -29,7 +29,9 @@ class Caixa(models.Model):
         ("FECHADO", "Fechado"),
     ]
 
-    data = models.DateField("Data", unique=True)
+    data = models.DateField("Data")
+    identificador = models.CharField("Identificador", max_length=50, default="Caixa 1",
+                                     help_text="Ex: Caixa 1, Caixa 2, Caixa Matriz")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="ABERTO")
 
     saldo_abertura = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -57,7 +59,7 @@ class Caixa(models.Model):
         ordering = ["-data"]
 
     def __str__(self):
-        return f"Caixa {self.data.strftime('%d/%m/%Y')} — {self.get_status_display()}"
+        return f"{self.identificador} — {self.data.strftime('%d/%m/%Y')} — {self.get_status_display()}"
 
     @property
     def diferenca_cor(self):
@@ -184,8 +186,8 @@ def calcular_saldo_atual():
 # ==============================================================================
 
 class Tesouraria(models.Model):
-    """Cofre central — distribui e recebe dinheiro dos caixas."""
-    data = models.DateField("Data", unique=True)
+    """Cofre central permanente — distribui e recebe dinheiro dos caixas."""
+    data = models.DateField("Data Criação", null=True, blank=True)
     saldo_abertura = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     saldo_atual = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 

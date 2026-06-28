@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header bg-warning">
+        <h5 class="mb-0"><i class="bi bi-arrow-repeat me-2"></i>Renegociar Contrato — {{ contrato.codigo_contrato }}</h5>
+      </div>
+      <div class="card-body">
+
+        <!-- RESUMO DA DÍVIDA -->
+        <div class="alert alert-danger py-3 mb-3">
+          <div class="row text-center">
+            <div class="col">
+              <small class="d-block text-muted">Cliente</small>
+              <strong>{{ contrato.cliente.nome_completo }}</strong>
+            </div>
+            <div class="col">
+              <small class="d-block text-muted">Contrato</small>
+              <strong>{{ contrato.codigo_contrato }}</strong>
+            </div>
+            <div class="col">
+              <small class="d-block text-muted">Parcelas Abertas</small>
+              <strong>{{ parcelas_abertas.count }}</strong>
+            </div>
+            <div class="col">
+              <small class="d-block text-muted">Dívida Total (atualizada)</small>
+              <strong class="fs-4">R$ {{ total_divida|floatformat:2 }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-muted small">
+          A renegociação criará uma <strong>nova proposta de crédito</strong> que passará por toda a esteira de aprovação
+          (Captação → Análise → Comitê → Formalização → Liberação). Só após a liberação o contrato antigo será liquidado.
+        </p>
+
+        <form method="post">
+          {% csrf_token %}
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Entrada (R$)</label>
+              <input type="text" name="entrada" class="form-control brl-rng" value="0,00" placeholder="0,00">
+              <small class="text-muted">Valor pago pelo cliente na hora</small>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Nova Taxa (% a.m.)</label>
+              <input type="number" name="nova_taxa" class="form-control" value="{{ contrato.taxa_juros_mensal }}" step="0.01" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Nº Parcelas</label>
+              <input type="number" name="qtd_parcelas" class="form-control" value="12" min="1" max="360" required>
+            </div>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">1º Vencimento</label>
+              <input type="date" name="novo_vencimento" class="form-control" required>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label fw-semibold">Novo Valor Estimado</label>
+              <div class="form-control bg-light fs-5 fw-bold text-primary" id="novo-valor">
+                R$ {{ total_divida|floatformat:2 }}
+              </div>
+              <small class="text-muted">Dívida total - Entrada = Valor do novo contrato</small>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="{% url 'emprestimos:contrato_detalhe' contrato.id %}" class="btn btn-outline-secondary">
+              <i class="bi bi-arrow-left me-1"></i>Voltar
+            </a>
+            <button type="submit" class="btn btn-warning btn-lg" onclick="return confirm('Criar proposta de renegociação?')">
+              <i class="bi bi-arrow-repeat me-1"></i>Criar Proposta de Renegociação
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var divida = {{ total_divida|stringformat:"f" }};
+document.querySelectorAll('.brl-rng').forEach(function(el){
+  el.addEventListener('input', function(){
+    var v = el.value.replace(/\D/g, '');
+    if(!v){ el.value = ''; recalc(); return; }
+    var n = parseInt(v,10), r = (n/100).toFixed(2), p = r.split('.');
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    el.value = p.join(',');
+    recalc();
+  });
+  el.addEventListener('keypress', function(e){ if(!/[0-9]/.test(String.fromCharCode(e.which))) e.preventDefault(); });
+});
+function recalc(){
+  var ent = document.querySelector('.brl-rng').value.replace(/\D/g,'');
+  var entrada = ent ? parseInt(ent,10)/100 : 0;
+  var novo = divida - entrada;
+  document.getElementById('novo-valor').textContent = novo.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+}
+</script>
+{% endblock %}
